@@ -89,11 +89,10 @@ async function saveCatalog(kind, id, body) {
   return db.sequelize.transaction(async (t) => {
     const row = id ? await find(kind, id, t, true) : null;
     if (kind === "productos") await related(db.Categoria, data.categoriaId, t);
-    return serialize(
-      row
-        ? await row.update(data, { transaction: t })
-        : await models[kind].create(data, { transaction: t }),
-    );
+    const saved = row
+      ? await row.update(data, { transaction: t })
+      : await models[kind].create(data, { transaction: t });
+    return serialize(await find(kind, saved.id, t));
   });
 }
 // Todas las escrituras de líneas bloquean primero el pedido. Así se serializan
@@ -103,7 +102,7 @@ async function saveOrder(id, body) {
   const data = {
     clienteId: v.integer(body.clienteId, "clienteId"),
     fecha: v.date(body.fecha),
-    estado: v.state(body.estado ?? "pendiente"),
+    estado: v.state(body.estado === undefined ? "pendiente" : body.estado),
   };
   if (!Array.isArray(body.detalles) || !body.detalles.length)
     v.fail("El pedido debe tener al menos un detalle.");

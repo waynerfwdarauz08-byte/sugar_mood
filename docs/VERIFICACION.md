@@ -18,9 +18,24 @@ La base de desarrollo sugar_mood se creó y recibió migraciones y datos fictici
 
 Comprobación HTTP adicional: frontend /, API /api/salud y /api/pedidos respondieron 200. Se verificó la sintaxis de los 16 archivos JavaScript del backend y la validez XML del DER (cinco entidades, cuatro conexiones y etiquetas de cardinalidad). La colección contiene los 25 endpoints CRUD y la solicitud de salud.
 
+## Correcciones posteriores verificadas
+
+- Transformación automática de JSX configurada en Vite para evitar `React is not defined`.
+- Logo original, tema verde petróleo/dorado y animaciones con soporte de movimiento reducido.
+- Solicitudes relativas a /api mediante proxy Vite para evitar diferencias entre localhost, 127.0.0.1 y puertos del frontend. Salud, productos y categorías se verificaron previamente mediante ese proxy con HTTP 200.
+- POST y PUT de productos incluyen ahora el objeto categoria, igual que GET.
+- `estado: null` se rechaza con 400; el valor pendiente se aplica únicamente cuando estado está ausente.
+- El editor de pedidos conserva segundos de la fecha y permite editarlos.
+- Las consultas auxiliares fallidas ya no ocultan los listados que sí cargaron. Hay avisos específicos y acciones para reintentar.
+- Se avisa cuando no existen productos activos; no se pueden agregar líneas sin productos disponibles. Se permite editar las líneas históricas de productos inactivos.
+- Se limpian mensajes de éxito antiguos y se corrige el número de columnas en las filas sin coincidencias.
+- La integración MySQL se repitió en una base aislada: cinco pruebas aprobadas, incluida la prueba de CRUDs con sus casos de integridad. Migraciones, semillas, reversión y reaplicación aprobadas.
+- Se agregaron fallos simulados después de una primera inserción de detalle y después de una actualización de línea. Se verificó que se revierten cabecera y líneas. Los dos errores 500 del registro de esa prueba son intencionales.
+- La compilación del frontend volvió a completarse correctamente.
+
 La auditoría npm de dependencias de ejecución reportó dos avisos moderados en la cadena Sequelize → uuid. No se aplicó la degradación incompatible de Sequelize sugerida por npm. El proyecto no usa UUID como identificadores: usa INT autoincremental. Conviene revisar estas dependencias antes de un despliegue público.
 
-No se completó la prueba visual/interactiva: el control de Chrome se detuvo porque no pudo determinar la URL activa con suficiente confianza. El build no sustituye esa comprobación. Se recomienda ejecutar el flujo manual descrito en README antes de presentar.
+No se completó la prueba visual/interactiva: se volvió a consultar el control del navegador, pero el host de acceso no está disponible y la automatización de Edge se detuvo porque no pudo determinar la URL activa con suficiente confianza. El build no sustituye esa comprobación. Sigue pendiente el flujo manual descrito en README antes de presentar. La colección Postman está disponible; no se afirma haberla ejecutado en la aplicación Postman.
 
 Comandos reproducibles desde la raíz:
 

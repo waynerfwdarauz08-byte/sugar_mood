@@ -66,6 +66,8 @@ Detalle PUT:
 
 Usar IDs devueltos por las altas. descripcion y direccion admiten null o ausencia; activo predetermina true; estado predetermina pendiente. PUT de catálogos exige los campos obligatorios completos. PUT de pedido reemplaza sus líneas. PUT de detalle solo modifica cantidad, conservando producto y precio histórico.
 
+El valor predeterminado de estado se aplica si el campo está ausente; enviar null se rechaza con 400. Las respuestas de creación, actualización y consulta de productos incluyen categoria.
+
 El cliente no puede escribir id, precioUnitario, subtotal ni total. Campos desconocidos se rechazan. Fechas ISO 8601 con zona; la interfaz muestra hora de Costa Rica.
 
 ## Respuestas

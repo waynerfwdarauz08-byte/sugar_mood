@@ -51,5 +51,5 @@ export const localDate = (value) =>
   }).format(new Date(value));
 export const inputDate = (value) => {
   const d = value ? new Date(value) : new Date();
-  return new Date(d.getTime() - 6 * 3600000).toISOString().slice(0, 16);
+  return new Date(d.getTime() - 6 * 3600000).toISOString().slice(0, 19);
 };

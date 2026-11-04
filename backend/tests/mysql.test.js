@@ -55,10 +55,39 @@ test(
       await call("get", "clientes/abc", undefined, 400);
       const data = {
         clienteId: client.id,
-        fecha: "2026-11-04T10:00:00-06:00",
+        fecha: "2026-11-04T10:00:45-06:00",
         detalles: [{ productoId: p.id, cantidad: 2 }],
       };
+      assert.equal(p.categoria.id, c.id);
+      const updatedProduct = await call("put", "productos/" + p.id, {
+        nombre: p.nombre, categoriaId: c.id, precio: "0.10", activo: true,
+      });
+      assert.equal(updatedProduct.categoria.id, c.id);
+      await call("post", "pedidos", {...data, estado:null}, 400);
+      // Provocar un fallo real de la operación después de la primera escritura.
+      const createDetail = db.DetallePedido.create;
+      const countBefore = await db.Pedido.count();
+      let writes = 0;
+      try {
+        db.DetallePedido.create = async function(...args) {
+          if (++writes === 2) throw new Error("Fallo simulado después de guardar la primera línea");
+          return createDetail.apply(this,args);
+        };
+        await call("post", "pedidos", {...data, detalles:[{productoId:p.id,cantidad:1},{productoId:p2.id,cantidad:1}]},500);
+      } finally { db.DetallePedido.create = createDetail; }
+      assert.equal(writes,2);
+      assert.equal(await db.Pedido.count(),countBefore);
+      assert.equal(await db.DetallePedido.count({where:{productoId:p.id}}),0);
       const order = await call("post", "pedidos", data, 201);
+      assert.equal(order.fecha, "2026-11-04T16:00:45.000Z");
+      try {
+        db.DetallePedido.create = async () => {throw new Error("Fallo simulado después de actualizar una línea");};
+        await call("put", "pedidos/"+order.id, {...data,estado:"preparado",detalles:[{productoId:p.id,cantidad:99},{productoId:p2.id,cantidad:1}]},500);
+      } finally { db.DetallePedido.create = createDetail; }
+      const unchanged = await call("get", "pedidos/"+order.id);
+      assert.equal(unchanged.estado,"pendiente");
+      assert.equal(unchanged.total,"0.20");
+      assert.equal(unchanged.detalles.length,1);
       assert.equal(order.total, "0.20");
       assert.equal(order.cliente.id, client.id);
       await call("post", "pedidos", { ...data, detalles: [] }, 400);

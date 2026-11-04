@@ -38,6 +38,7 @@ export default function CatalogPage({ kind }) {
     [categories, setCategories] = useState([]),
     [loading, setLoading] = useState(true),
     [error, setError] = useState(""),
+    [warning, setWarning] = useState(""),
     [success, setSuccess] = useState(""),
     [form, setForm] = useState(null),
     [target, setTarget] = useState(null),
@@ -47,13 +48,20 @@ export default function CatalogPage({ kind }) {
   async function load() {
     setLoading(true);
     setError("");
+    setWarning("");
+    setSuccess("");
     try {
-      const [items, cats] = await Promise.all([
+      const [items, cats] = await Promise.allSettled([
         api.list(kind),
         kind === "productos" ? api.list("categorias") : Promise.resolve([]),
       ]);
-      setRows(items);
-      setCategories(cats);
+      if (items.status === "fulfilled") setRows(items.value);
+      else setError(items.reason.message);
+      if (cats.status === "fulfilled") setCategories(cats.value);
+      else {
+        setCategories([]);
+        setWarning("No se pudieron cargar las categorías. El listado sigue disponible; reintenta antes de guardar productos.");
+      }
     } catch (e) {
       setError(e.message);
     } finally {
@@ -64,6 +72,7 @@ export default function CatalogPage({ kind }) {
     load();
   }, [kind]);
   function open(row) {
+    setSuccess("");
     setFormError("");
     setForm(
       row
@@ -93,8 +102,8 @@ export default function CatalogPage({ kind }) {
       if (kind === "productos") body.categoriaId = Number(body.categoriaId);
       await api.save(kind, id, body);
       setForm(null);
-      setSuccess("Registro guardado correctamente.");
       await load();
+      setSuccess("Registro guardado correctamente.");
     } catch (e) {
       setFormError(e.message);
     } finally {
@@ -107,8 +116,8 @@ export default function CatalogPage({ kind }) {
     try {
       await api.remove(kind, target.id);
       setTarget(null);
-      setSuccess("Registro eliminado correctamente.");
       await load();
+      setSuccess("Registro eliminado correctamente.");
     } catch (e) {
       setFormError(e.message);
     } finally {
@@ -136,6 +145,7 @@ export default function CatalogPage({ kind }) {
         }
       />
       <Message error={error} success={success} />
+      {warning && <div><Message error={warning}/><button className="secondary" onClick={load}>Reintentar categorías</button></div>}
       <section className="panel">
         <div className="panel-toolbar">
           <div>
@@ -220,6 +230,7 @@ export default function CatalogPage({ kind }) {
                       <Actions
                         onEdit={() => open(r)}
                         onDelete={() => {
+                          setSuccess("");
                           setFormError("");
                           setTarget(r);
                         }}
@@ -229,7 +240,7 @@ export default function CatalogPage({ kind }) {
                 ))}
                 {!filtered.length && (
                   <tr>
-                    <td colSpan="5">No hay coincidencias.</td>
+                    <td colSpan={kind === "productos" ? 5 : kind === "clientes" ? 4 : 3}>No hay coincidencias.</td>
                   </tr>
                 )}
               </tbody>

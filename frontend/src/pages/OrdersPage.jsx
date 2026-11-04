@@ -16,6 +16,7 @@ export default function OrdersPage() {
     [products, setProducts] = useState([]),
     [loading, setLoading] = useState(true),
     [error, setError] = useState(""),
+    [warning, setWarning] = useState(""),
     [success, setSuccess] = useState(""),
     [form, setForm] = useState(null),
     [formError, setFormError] = useState(""),
@@ -26,15 +27,20 @@ export default function OrdersPage() {
   async function load() {
     setLoading(true);
     setError("");
+    setWarning("");
+    setSuccess("");
     try {
-      const [o, c, p] = await Promise.all([
+      const [o, c, p] = await Promise.allSettled([
         api.list("pedidos"),
         api.list("clientes"),
         api.list("productos"),
       ]);
-      setOrders(o);
-      setClients(c);
-      setProducts(p);
+      if (o.status === "fulfilled") setOrders(o.value);
+      else setError(o.reason.message);
+      setClients(c.status === "fulfilled" ? c.value : []);
+      setProducts(p.status === "fulfilled" ? p.value : []);
+      const failed = [c.status === "rejected" && "clientes", p.status === "rejected" && "productos"].filter(Boolean);
+      if (failed.length) setWarning("No se pudieron cargar " + failed.join(" y ") + ". Puedes consultar los pedidos; reintenta antes de guardarlos.");
     } catch (e) {
       setError(e.message);
     } finally {
@@ -45,6 +51,7 @@ export default function OrdersPage() {
     load();
   }, []);
   function open(order) {
+    setSuccess("");
     setFormError("");
     setForm(
       order
@@ -81,7 +88,7 @@ export default function OrdersPage() {
     try {
       const body = {
         clienteId: Number(form.clienteId),
-        fecha: new Date(form.fecha + ":00-06:00").toISOString(),
+        fecha: new Date(form.fecha + "-06:00").toISOString(),
         estado: form.estado,
         detalles: form.detalles.map((d) => ({
           productoId: Number(d.productoId),
@@ -95,10 +102,10 @@ export default function OrdersPage() {
         throw new Error("No repitas productos en el pedido.");
       const saved = await api.save("pedidos", form.id, body);
       setForm(null);
+      await load();
       setSuccess(
         `Pedido #${saved.id} guardado. Total: ${currency(saved.total)}.`,
       );
-      await load();
     } catch (e) {
       setFormError(e.message);
     } finally {
@@ -111,8 +118,8 @@ export default function OrdersPage() {
     try {
       await api.remove("pedidos", target.id);
       setTarget(null);
-      setSuccess("Pedido y detalles eliminados correctamente.");
       await load();
+      setSuccess("Pedido y detalles eliminados correctamente.");
     } catch (e) {
       setFormError(e.message);
     } finally {
@@ -169,6 +176,7 @@ export default function OrdersPage() {
         </article>
       </div>
       <Message error={error} success={success} />
+      {warning && <div><Message error={warning}/><button className="secondary" onClick={load}>Reintentar datos del pedido</button></div>}
       <section className="panel">
         <div className="panel-toolbar">
           <div>
@@ -236,6 +244,7 @@ export default function OrdersPage() {
                       <Actions
                         onEdit={() => open(o)}
                         onDelete={() => {
+                          setSuccess("");
                           setFormError("");
                           setTarget(o);
                         }}
@@ -284,6 +293,7 @@ export default function OrdersPage() {
                   <input
                     required
                     type="datetime-local"
+                    step="1"
                     min="1000-01-01T00:00"
                     max="9999-12-31T23:59"
                     value={form.fecha}
@@ -308,11 +318,15 @@ export default function OrdersPage() {
               {!clients.length && (
                 <p>Crea un cliente antes de guardar pedidos.</p>
               )}
+              {!products.some(p => p.activo) && (
+                <p role="status">No hay productos activos disponibles. Crea o activa un producto para agregar nuevas líneas. Los productos históricos del pedido se conservan.</p>
+              )}
               <div className="lines-heading">
                 <h3>Productos del pedido</h3>
                 <button
                   type="button"
                   className="secondary"
+                  disabled={!products.some(p => p.activo && !form.detalles.some(d => Number(d.productoId) === p.id))}
                   onClick={() =>
                     setForm({
                       ...form,
@@ -423,7 +437,7 @@ export default function OrdersPage() {
                 >
                   Cancelar
                 </button>
-                <button type="submit" disabled={!clients.length}>
+                <button type="submit" disabled={!clients.length || !products.length || (!form.id && !products.some(p => p.activo))}>
                   {busy ? "Guardando…" : "Guardar pedido"}
                 </button>
               </div>
