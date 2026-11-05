@@ -1,5 +1,6 @@
-﻿const db = require("../models");
+const db = require("../models");
 const v = require("./validation");
+const access = require("./accessService");
 const includes = {
   categorias: [],
   clientes: [],
@@ -73,21 +74,47 @@ function catalog(kind, b) {
     activo: b.activo ?? true,
   };
 }
-async function list(kind) {
+async function list(kind, user) {
+  access.known(user);
+  let where = {},
+    include = includes[kind];
+  if (!access.isAdmin(user)) {
+    if (kind === "productos") where = { activo: true };
+    if (kind === "clientes") where = { usuarioId: user.id };
+    if (kind === "pedidos") where = { clienteId: access.clientId(user) };
+    if (kind === "detalles-pedido")
+      include = [
+        ...include,
+        {
+          model: db.Pedido,
+          as: "pedido",
+          attributes: [],
+          required: true,
+          where: { clienteId: access.clientId(user) },
+        },
+      ];
+  }
   return (
     await models[kind].findAll({
-      include: includes[kind],
+      include,
+      where,
       order: [["id", "DESC"]],
     })
   ).map(serialize);
 }
-async function get(kind, id) {
-  return serialize(await find(kind, id));
+async function get(kind, id, user) {
+  const row = await find(kind, id);
+  await access.check(kind, row, user);
+  return serialize(row);
 }
-async function saveCatalog(kind, id, body) {
+async function saveCatalog(kind, id, body, user) {
+  access.known(user);
+  if (!access.isAdmin(user) && (kind !== "clientes" || !id))
+    v.fail("No tienes permiso para realizar esta operación.", 403);
   const data = catalog(kind, body);
   return db.sequelize.transaction(async (t) => {
     const row = id ? await find(kind, id, t, true) : null;
+    if (row) await access.check(kind, row, user, t, true);
     if (kind === "productos") await related(db.Categoria, data.categoriaId, t);
     const saved = row
       ? await row.update(data, { transaction: t })
@@ -97,13 +124,27 @@ async function saveCatalog(kind, id, body) {
 }
 // Todas las escrituras de líneas bloquean primero el pedido. Así se serializan
 // altas, reemplazos y bajas concurrentes, incluyendo la regla de última línea.
-async function saveOrder(id, body) {
+async function saveOrder(id, body, user) {
+  access.known(user);
   v.object(body, ["clienteId", "fecha", "estado", "detalles"]);
   const data = {
-    clienteId: v.integer(body.clienteId, "clienteId"),
+    clienteId: access.isAdmin(user)
+      ? v.integer(body.clienteId, "clienteId")
+      : access.clientId(user),
     fecha: v.date(body.fecha),
     estado: v.state(body.estado === undefined ? "pendiente" : body.estado),
   };
+  if (!access.isAdmin(user)) {
+    if (
+      body.clienteId !== undefined &&
+      v.integer(body.clienteId, "clienteId") !== data.clienteId
+    )
+      v.fail("No puedes asignar pedidos a otro cliente.", 403);
+    if (!id && data.estado !== "pendiente")
+      v.fail("Los pedidos nuevos deben estar pendientes.", 403);
+    if (id && !["pendiente", "cancelado"].includes(data.estado))
+      v.fail("No puedes preparar ni entregar pedidos.", 403);
+  }
   if (!Array.isArray(body.detalles) || !body.detalles.length)
     v.fail("El pedido debe tener al menos un detalle.");
   const lines = body.detalles.map((d) => {
@@ -117,6 +158,7 @@ async function saveOrder(id, body) {
     v.fail("Un producto solo puede aparecer una vez por pedido.", 409);
   const orderId = await db.sequelize.transaction(async (t) => {
     let row = id ? await find("pedidos", id, t, true) : null;
+    if (row) await access.check("pedidos", row, user, t, true);
     await related(db.Cliente, data.clienteId, t);
     const old = row
       ? await db.DetallePedido.findAll({
@@ -156,9 +198,10 @@ async function saveOrder(id, body) {
     }
     return row.id;
   });
-  return get("pedidos", orderId);
+  return get("pedidos", orderId, user);
 }
-async function saveDetail(id, body) {
+async function saveDetail(id, body, user) {
+  access.known(user);
   v.object(body, id ? ["cantidad"] : ["pedidoId", "productoId", "cantidad"]);
   const cantidad = v.integer(body.cantidad, "cantidad");
   const original = id ? await find("detalles-pedido", id) : null;
@@ -166,7 +209,8 @@ async function saveDetail(id, body) {
     ? original.pedidoId
     : v.integer(body.pedidoId, "pedidoId");
   const saved = await db.sequelize.transaction(async (t) => {
-    await find("pedidos", pedidoId, t, true);
+    const parent = await find("pedidos", pedidoId, t, true);
+    await access.check("pedidos", parent, user, t, true);
     if (id) {
       const row = await find("detalles-pedido", id, t, true);
       await row.update({ cantidad }, { transaction: t });
@@ -189,13 +233,25 @@ async function saveDetail(id, body) {
       )
     ).id;
   });
-  return get("detalles-pedido", saved);
+  return get("detalles-pedido", saved, user);
 }
-async function remove(kind, id) {
+async function remove(kind, id, user) {
+  access.known(user);
+  if (
+    !access.isAdmin(user) &&
+    ["categorias", "productos", "clientes"].includes(kind)
+  )
+    v.fail("No tienes permiso para eliminar este registro.", 403);
   const original = kind === "detalles-pedido" ? await find(kind, id) : null;
   await db.sequelize.transaction(async (t) => {
     if (original) await find("pedidos", original.pedidoId, t, true);
     const row = await find(kind, id, t, true);
+    await access.check(kind, row, user, t, true);
+    if (kind === "clientes" && row.usuarioId)
+      v.fail(
+        "Este cliente está vinculado a una cuenta. Elimina primero la cuenta de usuario para conservar la integridad del acceso.",
+        409,
+      );
     if (
       original &&
       (await db.DetallePedido.count({
@@ -216,10 +272,10 @@ module.exports = {
   list,
   get,
   remove,
-  save: (kind, id, body) =>
+  save: (kind, id, body, user) =>
     kind === "pedidos"
-      ? saveOrder(id, body)
+      ? saveOrder(id, body, user)
       : kind === "detalles-pedido"
-        ? saveDetail(id, body)
-        : saveCatalog(kind, id, body),
+        ? saveDetail(id, body, user)
+        : saveCatalog(kind, id, body, user),
 };

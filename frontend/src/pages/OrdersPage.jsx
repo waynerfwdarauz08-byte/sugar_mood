@@ -1,5 +1,16 @@
-﻿import { useEffect, useState } from "react";
-import { api, currency, lineCents, decimal, localDate, inputDate } from "../services/api";
+import { useEffect, useState } from "react";
+import {
+  api,
+  currency,
+  lineCents,
+  decimal,
+  localDate,
+  inputDate,
+} from "../services/api";
+import { useAuth } from "../context/AuthContext";
+import { pedidoService } from "../services/pedidoService";
+import { clienteService } from "../services/clienteService";
+import { productoService } from "../services/productoService";
 import {
   Heading,
   Message,
@@ -11,6 +22,7 @@ import {
 } from "../components/UI";
 const states = ["pendiente", "preparado", "entregado", "cancelado"];
 export default function OrdersPage() {
+  const { usuario, isAdmin } = useAuth();
   const [orders, setOrders] = useState([]),
     [clients, setClients] = useState([]),
     [products, setProducts] = useState([]),
@@ -31,16 +43,41 @@ export default function OrdersPage() {
     setSuccess("");
     try {
       const [o, c, p] = await Promise.allSettled([
-        api.list("pedidos"),
-        api.list("clientes"),
-        api.list("productos"),
+        pedidoService.list(),
+        clienteService.list(),
+        productoService.list(),
       ]);
       if (o.status === "fulfilled") setOrders(o.value);
       else setError(o.reason.message);
       setClients(c.status === "fulfilled" ? c.value : []);
-      setProducts(p.status === "fulfilled" ? p.value : []);
-      const failed = [c.status === "rejected" && "clientes", p.status === "rejected" && "productos"].filter(Boolean);
-      if (failed.length) setWarning("No se pudieron cargar " + failed.join(" y ") + ". Puedes consultar los pedidos; reintenta antes de guardarlos.");
+      setProducts(
+        p.status === "fulfilled"
+          ? [
+              ...new Map(
+                [
+                  ...p.value,
+                  ...(o.status === "fulfilled"
+                    ? o.value.flatMap((order) =>
+                        order.detalles.map((d) => d.producto),
+                      )
+                    : []),
+                ]
+                  .filter(Boolean)
+                  .map((product) => [product.id, product]),
+              ).values(),
+            ]
+          : [],
+      );
+      const failed = [
+        c.status === "rejected" && "clientes",
+        p.status === "rejected" && "productos",
+      ].filter(Boolean);
+      if (failed.length)
+        setWarning(
+          "No se pudieron cargar " +
+            failed.join(" y ") +
+            ". Puedes consultar los pedidos; reintenta antes de guardarlos.",
+        );
     } catch (e) {
       setError(e.message);
     } finally {
@@ -68,7 +105,7 @@ export default function OrdersPage() {
             })),
           }
         : {
-            clienteId: "",
+            clienteId: isAdmin ? "" : usuario.cliente?.id || "",
             fecha: inputDate(),
             estado: "pendiente",
             detalles: [{ productoId: "", cantidad: 1, precioUnitario: "0.00" }],
@@ -100,7 +137,7 @@ export default function OrdersPage() {
         body.detalles.length
       )
         throw new Error("No repitas productos en el pedido.");
-      const saved = await api.save("pedidos", form.id, body);
+      const saved = await pedidoService.save(form.id, body);
       setForm(null);
       await load();
       setSuccess(
@@ -116,7 +153,7 @@ export default function OrdersPage() {
     setBusy(true);
     setFormError("");
     try {
-      await api.remove("pedidos", target.id);
+      await pedidoService.remove(target.id);
       setTarget(null);
       await load();
       setSuccess("Pedido y detalles eliminados correctamente.");
@@ -138,7 +175,7 @@ export default function OrdersPage() {
     <>
       <Heading
         eyebrow="CADA PEDIDO, UN MOMENTO DULCE"
-        title="Pedidos"
+        title={isAdmin ? "Pedidos" : "Mis pedidos"}
         description="Del primer antojo a la entrega. Todo en un solo lugar."
         action={<button onClick={() => open()}>+ Nuevo pedido</button>}
       />
@@ -176,7 +213,14 @@ export default function OrdersPage() {
         </article>
       </div>
       <Message error={error} success={success} />
-      {warning && <div><Message error={warning}/><button className="secondary" onClick={load}>Reintentar datos del pedido</button></div>}
+      {warning && (
+        <div>
+          <Message error={warning} />
+          <button className="secondary" onClick={load}>
+            Reintentar datos del pedido
+          </button>
+        </div>
+      )}
       <section className="panel">
         <div className="panel-toolbar">
           <div>
@@ -241,14 +285,16 @@ export default function OrdersPage() {
                     </td>
                     <td className="amount">{currency(o.total)}</td>
                     <td>
-                      <Actions
-                        onEdit={() => open(o)}
-                        onDelete={() => {
-                          setSuccess("");
-                          setFormError("");
-                          setTarget(o);
-                        }}
-                      />
+                      {(isAdmin || o.estado === "pendiente") && (
+                        <Actions
+                          onEdit={() => open(o)}
+                          onDelete={() => {
+                            setSuccess("");
+                            setFormError("");
+                            setTarget(o);
+                          }}
+                        />
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -277,6 +323,7 @@ export default function OrdersPage() {
                   <select
                     required
                     value={form.clienteId}
+                    disabled={!isAdmin}
                     onChange={(e) =>
                       setForm({ ...form, clienteId: e.target.value })
                     }
@@ -309,7 +356,12 @@ export default function OrdersPage() {
                       setForm({ ...form, estado: e.target.value })
                     }
                   >
-                    {states.map((s) => (
+                    {(isAdmin
+                      ? states
+                      : form.id
+                        ? ["pendiente", "cancelado"]
+                        : ["pendiente"]
+                    ).map((s) => (
                       <option key={s}>{s}</option>
                     ))}
                   </select>
@@ -318,15 +370,27 @@ export default function OrdersPage() {
               {!clients.length && (
                 <p>Crea un cliente antes de guardar pedidos.</p>
               )}
-              {!products.some(p => p.activo) && (
-                <p role="status">No hay productos activos disponibles. Crea o activa un producto para agregar nuevas líneas. Los productos históricos del pedido se conservan.</p>
+              {!products.some((p) => p.activo) && (
+                <p role="status">
+                  No hay productos activos disponibles. Crea o activa un
+                  producto para agregar nuevas líneas. Los productos históricos
+                  del pedido se conservan.
+                </p>
               )}
               <div className="lines-heading">
                 <h3>Productos del pedido</h3>
                 <button
                   type="button"
                   className="secondary"
-                  disabled={!products.some(p => p.activo && !form.detalles.some(d => Number(d.productoId) === p.id))}
+                  disabled={
+                    !products.some(
+                      (p) =>
+                        p.activo &&
+                        !form.detalles.some(
+                          (d) => Number(d.productoId) === p.id,
+                        ),
+                    )
+                  }
                   onClick={() =>
                     setForm({
                       ...form,
@@ -437,7 +501,14 @@ export default function OrdersPage() {
                 >
                   Cancelar
                 </button>
-                <button type="submit" disabled={!clients.length || !products.length || (!form.id && !products.some(p => p.activo))}>
+                <button
+                  type="submit"
+                  disabled={
+                    !clients.length ||
+                    !products.length ||
+                    (!form.id && !products.some((p) => p.activo))
+                  }
+                >
                   {busy ? "Guardando…" : "Guardar pedido"}
                 </button>
               </div>

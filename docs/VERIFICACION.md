@@ -1,46 +1,54 @@
-# Verificación · 4 de noviembre de 2026
+# Verificación · Día 2 · 5 de noviembre de 2026
 
-- Node 24.13, MySQL 8 local, Sequelize 6 y Vite 7.
-- Build de producción del frontend: aprobado.
-- Cuatro pruebas de validación: aprobadas (dinero exacto, IDs, textos/campos y fechas/estados).
-- Integración MySQL real: aprobada en una base temporal nueva, eliminada al terminar.
-- Cinco migraciones: creación, reversión completa y reaplicación aprobadas.
-- Seeder: primera carga aprobada; segunda ejecución no duplica registros gracias a SequelizeData.
-- CRUD de las cinco entidades y consultas con relaciones: aprobados.
-- Respuestas 400, 404, 409 y eliminaciones 204: aprobadas.
-- Pedidos sin detalles, productos repetidos/inactivos nuevos y referencias inexistentes: rechazados.
-- Fallos al crear o editar pedidos dejan el estado anterior intacto.
-- Precio histórico conservado después de cambiar el precio del catálogo y desactivar el producto.
-- Borrado de pedido y detalles, protección de padres relacionados y del último detalle: aprobados.
-- Dos eliminaciones concurrentes de líneas: una responde 204 y la otra 409; queda una línea.
+## MySQL real
 
-La base de desarrollo sugar_mood se creó y recibió migraciones y datos ficticios marcados como ejemplos. No se borraron bases ni datos previos. API y Vite arrancaron correctamente en 127.0.0.1:3000 y 127.0.0.1:5173.
+Se ejecutó scripts/test-mysql.cjs con una base temporal aislada. Resultados: cinco pruebas aprobadas, cero fallidas y cero omitidas. Una prueba integra todos los escenarios HTTP y de base de datos; las otras cuatro verifican validaciones.
 
-Comprobación HTTP adicional: frontend /, API /api/salud y /api/pedidos respondieron 200. Se verificó la sintaxis de los 16 archivos JavaScript del backend y la validez XML del DER (cinco entidades, cuatro conexiones y etiquetas de cardinalidad). La colección contiene los 25 endpoints CRUD y la solicitud de salud.
+- Nueve migraciones: creación inicial, reversión completa y reaplicación aprobadas.
+- Seeder de ejemplos: carga y segunda ejecución sin duplicación aprobadas.
+- CRUDs del negocio: códigos HTTP, relaciones, importes, restricciones únicas y FK aprobados.
+- Registro: crea Usuario y Cliente; asigna rol Cliente; rechaza contraseña corta, correo duplicado e intento de enviar id_rol.
+- Login, /me y contraseña incorrecta: aprobados. Se comprobaron hashes bcrypt y ausencia de password en respuestas.
+- Las cinco operaciones de los siete recursos sin token responden 401. Se probaron tokens alterados, inválidos y vencidos.
+- Dos cuentas de cliente: sus listados no incluyen pedidos/detalles ajenos; GET/PUT/DELETE ajenos y POST de detalle en pedido ajeno se rechazan.
+- Cliente no puede crear productos, administrar cuentas/roles, asignar otro clienteId ni preparar/entregar pedidos.
+- Perfil propio editable; otros perfiles inaccesibles. Pedido propio pendiente editable/cancelable; preparado/cancelado de solo lectura.
+- Roles/usuarios: CRUD administrativo, rol en uso, roles del sistema y último administrador protegidos. Cambiar el rol tiene efecto con el token previamente emitido. Borrar cuenta invalida sus siguientes peticiones y conserva el perfil comercial desvinculado.
+- Vinculación explícita con cliente preexistente: aprobada.
+- Precio histórico, producto inactivo histórico, duplicados, última línea y dos eliminaciones concurrentes: aprobados.
+- Fallos después de empezar a escribir: reversión completa aprobada. Los dos 500 del registro de integración son simulados deliberadamente.
 
-## Correcciones posteriores verificadas
+Se aplicaron las cuatro migraciones nuevas a la base local y se creó el primer administrador aleatorio. No se borraron registros anteriores. Las credenciales están en backend/.env y permanecen excluidas de Git. El cambio a cookies no agrega migraciones ni tablas.
 
-- Transformación automática de JSX configurada en Vite para evitar `React is not defined`.
-- Logo original, tema verde petróleo/dorado y animaciones con soporte de movimiento reducido.
-- Solicitudes relativas a /api mediante proxy Vite para evitar diferencias entre localhost, 127.0.0.1 y puertos del frontend. Salud, productos y categorías se verificaron previamente mediante ese proxy con HTTP 200.
-- POST y PUT de productos incluyen ahora el objeto categoria, igual que GET.
-- `estado: null` se rechaza con 400; el valor pendiente se aplica únicamente cuando estado está ausente.
-- El editor de pedidos conserva segundos de la fecha y permite editarlos.
-- Las consultas auxiliares fallidas ya no ocultan los listados que sí cargaron. Hay avisos específicos y acciones para reintentar.
-- Se avisa cuando no existen productos activos; no se pueden agregar líneas sin productos disponibles. Se permite editar las líneas históricas de productos inactivos.
-- Se limpian mensajes de éxito antiguos y se corrige el número de columnas en las filas sin coincidencias.
-- La integración MySQL se repitió en una base aislada: cinco pruebas aprobadas, incluida la prueba de CRUDs con sus casos de integridad. Migraciones, semillas, reversión y reaplicación aprobadas.
-- Se agregaron fallos simulados después de una primera inserción de detalle y después de una actualización de línea. Se verificó que se revierten cabecera y líneas. Los dos errores 500 del registro de esa prueba son intencionales.
-- La compilación del frontend volvió a completarse correctamente.
+## Frontend y artefactos
 
-La auditoría npm de dependencias de ejecución reportó dos avisos moderados en la cadena Sequelize → uuid. No se aplicó la degradación incompatible de Sequelize sugerida por npm. El proyecto no usa UUID como identificadores: usa INT autoincremental. Conviene revisar estas dependencias antes de un despliegue público.
+La compilación de producción se completó tras incorporar autenticación, páginas por entidad y administración. Las pruebas DOM verifican redirección sin sesión, permisos de Cliente/Administrador, login con cookies, logout, respuesta 401, registro sin rol editable, conservación de segundos al guardar, carga parcial, vinculación de cuenta con cliente existente, error al borrar último detalle y edición de productos históricos inactivos. La sesión del navegador se conserva en cookie httpOnly; AuthContext la recupera desde /auth/me al recargar.
 
-No se completó la prueba visual/interactiva: se volvió a consultar el control del navegador, pero el host de acceso no está disponible y la automatización de Edge se detuvo porque no pudo determinar la URL activa con suficiente confianza. El build no sustituye esa comprobación. Sigue pendiente el flujo manual descrito en README antes de presentar. La colección Postman está disponible; no se afirma haberla ejecutado en la aplicación Postman.
+DER actualizado: siete entidades, seis conexiones, id_rol y cliente.usuarioId, cardinalidades y reglas de integridad. Colección Postman actualizada con autenticación, CRUDs y casos 400/401/403/404, sin credenciales reales. No se afirma haberla ejecutado en la aplicación Postman.
 
-Comandos reproducibles desde la raíz:
+La automatización del navegador no está disponible: el inventario informó que el host de acceso está ausente. No se afirma que haya pasado una prueba visual en un navegador real. Las pruebas DOM y de renderizado, cuando se ejecutan, no sustituyen esa revisión visual.
+
+La auditoría previa de dependencias reportó avisos moderados en la cadena Sequelize/uuid; no se aplicaron degradaciones incompatibles. No se presenta esa auditoría previa como una revisión de seguridad completa del día 2.
+
+## Reproducir
 
 ```powershell
 npm test --prefix backend
 node scripts/test-mysql.cjs
+npm test --prefix frontend
 npm run build --prefix frontend
 ```
+
+La prueba MySQL borra exclusivamente la base temporal generada por el runner. La base de desarrollo no se usa para pruebas destructivas.
+
+La descripción de roles es opcional, VARCHAR(255). Se comprobó su creación, actualización y consulta, la aceptación de null y el rechazo de más de 255 caracteres. Los roles iniciales recibieron una descripción mediante la nueva migración.
+
+## Actualización de sesión a cookies
+
+Se verificó con un agente HTTP real que login crea una cookie httpOnly/SameSite=Lax de una hora, que /me y productos funcionan sin Bearer usando esa cookie y que logout la elimina. También se probaron ausencia de prueba CSRF, prueba anterior al login, origen no autorizado, cookie vencida y Authorization inválido sin fallback. La configuración de producción fuerza Secure y prefijo __Host-.
+
+Las pruebas DOM incluyen desmontar y volver a montar la aplicación para simular recarga: se restaura el usuario sin enviar otra vez sus credenciales. Después de logout, la misma recarga vuelve al login. Se comprueba además el fallo de red al cerrar sesión y la renovación controlada de una prueba CSRF antigua.
+
+No se afirmó haber realizado esta comprobación en un navegador visual real. Los escenarios HTTP y DOM se ejecutan sin usar datos comerciales de desarrollo. La colección también incluye ejemplos de sesión por cookies con el cookie jar de Postman activado.
+
+Resultado final de esta actualización: cinco pruebas de backend y dieciséis de frontend aprobadas, sin fallos ni omisiones en la ejecución integrada. Compilación de producción completada correctamente. No se iniciaron servidores permanentes.

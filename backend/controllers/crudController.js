@@ -1,13 +1,28 @@
-﻿const service = require("../services/crudService");
-module.exports = (kind) => ({
-  list: async (req, res) => res.json(await service.list(kind)),
-  get: async (req, res) => res.json(await service.get(kind, req.params.id)),
-  create: async (req, res) =>
-    res.status(201).json(await service.save(kind, null, req.body)),
-  update: async (req, res) =>
-    res.json(await service.save(kind, req.params.id, req.body)),
-  remove: async (req, res) => {
-    await service.remove(kind, req.params.id);
-    res.status(204).end();
-  },
-});
+module.exports = (kind) => {
+  const service = require(
+    "../services/" +
+      {
+        categorias: "categoria",
+        productos: "producto",
+        clientes: "cliente",
+        pedidos: "pedido",
+        "detalles-pedido": "detallePedido",
+        usuarios: "usuario",
+        roles: "rol",
+      }[kind] +
+      "Service",
+  );
+  return {
+    list: async (req, res) => res.json(await service.list(req.usuario)),
+    get: async (req, res) =>
+      res.json(await service.get(req.params.id, req.usuario)),
+    create: async (req, res) =>
+      res.status(201).json(await service.save(null, req.body, req.usuario)),
+    update: async (req, res) =>
+      res.json(await service.save(req.params.id, req.body, req.usuario)),
+    remove: async (req, res) => {
+      await service.remove(req.params.id, req.usuario);
+      res.status(204).end();
+    },
+  };
+};

@@ -1,4 +1,4 @@
-﻿import { useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 export function Message({ error, success }) {
   return error ? (
     <div className="notice error" role="alert">
@@ -89,15 +89,17 @@ export function Field({ label, children }) {
     </label>
   );
 }
-export function Actions({ onEdit, onDelete }) {
+export function Actions({ onEdit, onDelete, canDelete = true }) {
   return (
     <div className="row-actions">
       <button className="text-button" onClick={onEdit}>
         Editar
       </button>
-      <button className="text-button delete" onClick={onDelete}>
-        Eliminar
-      </button>
+      {canDelete && (
+        <button className="text-button delete" onClick={onDelete}>
+          Eliminar
+        </button>
+      )}
     </div>
   );
 }

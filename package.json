@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "npm test --prefix backend",
+    "test": "npm test --prefix backend && npm test --prefix frontend",
     "test:mysql": "node scripts/test-mysql.cjs",
     "build": "npm run build --prefix frontend"
   },

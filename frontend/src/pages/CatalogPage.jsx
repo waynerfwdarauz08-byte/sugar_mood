@@ -1,5 +1,7 @@
-﻿import { useEffect, useState } from "react";
-import { api, currency } from "../services/api";
+import { useEffect, useState } from "react";
+import { currency } from "../services/api";
+import { useAuth } from "../context/AuthContext";
+import { catalogServices, categoriaService } from "../services/catalogServices";
 import {
   Heading,
   Message,
@@ -33,6 +35,9 @@ const blank = (kind) =>
       ? { nombre: "", telefono: "", direccion: "" }
       : { nombre: "", descripcion: "" };
 export default function CatalogPage({ kind }) {
+  const { isAdmin, refresh } = useAuth();
+  const readOnly = !isAdmin && kind !== "clientes";
+  const service = catalogServices[kind];
   const s = settings[kind];
   const [rows, setRows] = useState([]),
     [categories, setCategories] = useState([]),
@@ -52,15 +57,17 @@ export default function CatalogPage({ kind }) {
     setSuccess("");
     try {
       const [items, cats] = await Promise.allSettled([
-        api.list(kind),
-        kind === "productos" ? api.list("categorias") : Promise.resolve([]),
+        service.list(),
+        kind === "productos" ? categoriaService.list() : Promise.resolve([]),
       ]);
       if (items.status === "fulfilled") setRows(items.value);
       else setError(items.reason.message);
       if (cats.status === "fulfilled") setCategories(cats.value);
       else {
         setCategories([]);
-        setWarning("No se pudieron cargar las categorías. El listado sigue disponible; reintenta antes de guardar productos.");
+        setWarning(
+          "No se pudieron cargar las categorías. El listado sigue disponible; reintenta antes de guardar productos.",
+        );
       }
     } catch (e) {
       setError(e.message);
@@ -100,7 +107,8 @@ export default function CatalogPage({ kind }) {
     try {
       const { id, ...body } = form;
       if (kind === "productos") body.categoriaId = Number(body.categoriaId);
-      await api.save(kind, id, body);
+      await service.save(id, body);
+      if (!isAdmin && kind === "clientes") await refresh();
       setForm(null);
       await load();
       setSuccess("Registro guardado correctamente.");
@@ -114,7 +122,7 @@ export default function CatalogPage({ kind }) {
     setBusy(true);
     setFormError("");
     try {
-      await api.remove(kind, target.id);
+      await service.remove(target.id);
       setTarget(null);
       await load();
       setSuccess("Registro eliminado correctamente.");
@@ -131,21 +139,30 @@ export default function CatalogPage({ kind }) {
     <>
       <Heading
         eyebrow="TU NEGOCIO, EN ORDEN"
-        title={s.title}
+        title={!isAdmin && kind === "clientes" ? "Mi perfil" : s.title}
         description={s.description}
         action={
-          <button onClick={() => open()}>
-            + {kind === "categorias" ? "Nueva" : "Nuevo"}{" "}
-            {s.one === "producto"
-              ? "producto"
-              : s.one === "cliente"
-                ? "cliente"
-                : "categoría"}
-          </button>
+          isAdmin && (
+            <button onClick={() => open()}>
+              + {kind === "categorias" ? "Nueva" : "Nuevo"}{" "}
+              {s.one === "producto"
+                ? "producto"
+                : s.one === "cliente"
+                  ? "cliente"
+                  : "categoría"}
+            </button>
+          )
         }
       />
       <Message error={error} success={success} />
-      {warning && <div><Message error={warning}/><button className="secondary" onClick={load}>Reintentar categorías</button></div>}
+      {warning && (
+        <div>
+          <Message error={warning} />
+          <button className="secondary" onClick={load}>
+            Reintentar categorías
+          </button>
+        </div>
+      )}
       <section className="panel">
         <div className="panel-toolbar">
           <div>
@@ -227,20 +244,29 @@ export default function CatalogPage({ kind }) {
                       <td>{r.descripcion || "—"}</td>
                     )}
                     <td>
-                      <Actions
-                        onEdit={() => open(r)}
-                        onDelete={() => {
-                          setSuccess("");
-                          setFormError("");
-                          setTarget(r);
-                        }}
-                      />
+                      {!readOnly && (
+                        <Actions
+                          onEdit={() => open(r)}
+                          onDelete={() => {
+                            setSuccess("");
+                            setFormError("");
+                            setTarget(r);
+                          }}
+                          canDelete={isAdmin}
+                        />
+                      )}
                     </td>
                   </tr>
                 ))}
                 {!filtered.length && (
                   <tr>
-                    <td colSpan={kind === "productos" ? 5 : kind === "clientes" ? 4 : 3}>No hay coincidencias.</td>
+                    <td
+                      colSpan={
+                        kind === "productos" ? 5 : kind === "clientes" ? 4 : 3
+                      }
+                    >
+                      No hay coincidencias.
+                    </td>
                   </tr>
                 )}
               </tbody>

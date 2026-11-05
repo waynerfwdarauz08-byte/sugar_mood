@@ -1,15 +1,27 @@
 const express = require("express");
 const cors = require("cors");
+const cookieParser = require("cookie-parser");
 const { sequelize } = require("./models");
-const routes = require("./routes/crudRoutes");
+const authenticated = require("./middlewares/authMiddleware");
+const allowed = require("./middlewares/roleMiddleware");
+const auth = require("./services/authService");
+const cookies = require("./services/cookieService");
 const app = express();
 app.disable("x-powered-by");
 app.use(
-  cors({
-    origin: (process.env.CORS_ORIGIN || "http://127.0.0.1:5173").split(","),
-  }),
+  cors((req, callback) =>
+    callback(null, {
+      origin: cookies.allowedOrigin(req.get("Origin"), req)
+        ? req.get("Origin")
+        : false,
+      credentials: true,
+    }),
+  ),
 );
+app.use(cookieParser());
+app.use(require("./middlewares/csrfMiddleware"));
 app.use(express.json({ limit: "100kb" }));
+app.use("/api/auth", require("./routes/authRoutes"));
 app.get("/api/salud", async (req, res) => {
   await sequelize.authenticate();
   res.json({ estado: "disponible", sistema: "SUGAR MOOD" });
@@ -21,7 +33,29 @@ for (const kind of [
   "pedidos",
   "detalles-pedido",
 ])
-  app.use("/api/" + kind, routes(kind));
+  app.use(
+    "/api/" + kind,
+    authenticated,
+    allowed("administrador", "cliente"),
+    require(
+      "./routes/" +
+        {
+          categorias: "categoria",
+          productos: "producto",
+          clientes: "cliente",
+          pedidos: "pedido",
+          "detalles-pedido": "detallePedido",
+        }[kind] +
+        "Routes",
+    ),
+  );
+for (const kind of ["usuarios", "roles"])
+  app.use(
+    "/api/" + kind,
+    authenticated,
+    allowed("administrador"),
+    require("./routes/" + (kind === "usuarios" ? "usuario" : "rol") + "Routes"),
+  );
 app.use((req, res) => res.status(404).json({ error: "Ruta no encontrada." }));
 app.use((err, req, res, next) => {
   let status = err.status || 500,
@@ -57,7 +91,8 @@ app.use((err, req, res, next) => {
   }
   res.status(status).json({ error: message });
 });
-if (require.main === module)
+if (require.main === module) {
+  auth.settings();
   sequelize
     .authenticate()
     .then(() =>
@@ -74,4 +109,5 @@ if (require.main === module)
       );
       process.exitCode = 1;
     });
+}
 module.exports = app;
