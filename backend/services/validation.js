@@ -1,4 +1,4 @@
-﻿class ApiError extends Error {
+class ApiError extends Error {
   constructor(status, message) {
     super(message);
     this.status = status;
@@ -81,6 +81,10 @@ const state = (v) => {
   return v;
 };
 module.exports = {
+  nonnegative: (value, name) => {
+    if (value === 0 || value === "0") return 0;
+    return integer(value, name);
+  },
   ApiError,
   fail,
   object,

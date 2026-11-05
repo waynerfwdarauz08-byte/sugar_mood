@@ -1,4 +1,4 @@
-﻿const { QueryTypes } = require("sequelize");
+const { QueryTypes } = require("sequelize");
 module.exports = {
   async up(q) {
     await q.sequelize.transaction(async (t) => {
@@ -41,18 +41,24 @@ module.exports = {
             nombre: "Paleta ChocoVainilla (ejemplo)",
             precio: "700.00",
             activo: true,
+            stock:100,
+            stockMinimo:5,
           },
           {
             categoriaId: cat("Postres (ejemplo)"),
             nombre: "Cheesecake de fresa (ejemplo)",
             precio: "1000.00",
             activo: true,
+            stock:100,
+            stockMinimo:5,
           },
           {
             categoriaId: cat("Minidonitas (ejemplo)"),
             nombre: "Caja de 8 minidonitas (ejemplo)",
             precio: "1500.00",
             activo: true,
+            stock:100,
+            stockMinimo:5,
           },
         ],
         options,
@@ -96,10 +102,12 @@ module.exports = {
             clienteId: client.id,
             fecha: new Date("2026-11-04T15:00:00Z"),
             estado: "pendiente",
+            stockAplicado:true,
           },
         ],
         options,
       );
+      await q.sequelize.query("UPDATE productos SET stock=98 WHERE id=:id",{...options,replacements:{id:product.id}});
       await q.bulkInsert(
         "detalles_pedido",
         [
@@ -112,6 +120,7 @@ module.exports = {
         ],
         options,
       );
+      await q.sequelize.query("INSERT INTO movimientos_inventario (productoId,productoNombre,usuarioNombre,fecha,tipo,cantidad,stockAnterior,stockPosterior,motivo) SELECT id,nombre,'Sistema',NOW(),'saldo_inicial',stock,0,stock,'Saldo inicial de datos ficticios' FROM productos WHERE categoriaId IN (:ids)",{...options,replacements:{ids:categories.map(c=>c.id)}});
     });
   },
   async down() {

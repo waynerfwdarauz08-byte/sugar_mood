@@ -315,13 +315,13 @@ test(
       const p = await call(
         "post",
         "productos",
-        { nombre: "Producto de prueba", categoriaId: c.id, precio: "0.10" },
+        { nombre: "Producto de prueba", categoriaId: c.id, precio: "0.10", stock: 1000 },
         201,
       );
       const p2 = await call(
         "post",
         "productos",
-        { nombre: "Producto dos", categoriaId: c.id, precio: "0.20" },
+        { nombre: "Producto dos", categoriaId: c.id, precio: "0.20", stock: 1000 },
         201,
       );
       await call("get", "productos/" + p.id);
@@ -345,7 +345,7 @@ test(
       const updatedProduct = await call("put", "productos/" + p.id, {
         nombre: p.nombre,
         categoriaId: c.id,
-        precio: "0.10",
+        precio: "0.10", stock: 1000,
         activo: true,
       });
       assert.equal(updatedProduct.categoria.id, c.id);

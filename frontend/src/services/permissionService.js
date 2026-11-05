@@ -1,0 +1,2 @@
+export const canAccess=(user,resource,action='leer')=>Boolean(user?.rol?.codigo==='administrador'||user?.rol?.permisos?.includes(resource+'.'+action));
+export const clientPermissionCodes=['categorias.leer','productos.leer','clientes.leer','clientes.editar','pedidos.leer','pedidos.crear','pedidos.editar','pedidos.eliminar','detalles-pedido.leer','detalles-pedido.crear','detalles-pedido.editar','detalles-pedido.eliminar','pagos.leer','agenda.leer'];

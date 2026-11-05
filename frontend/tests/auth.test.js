@@ -1,5 +1,6 @@
 import { before, after, beforeEach, afterEach, test } from "node:test";
 import assert from "node:assert/strict";
+import {registerOperations} from './operation-cases.js';
 import React from "react";
 import { MemoryRouter } from "react-router-dom";
 import { JSDOM } from "jsdom";
@@ -39,7 +40,7 @@ const client = {
   id: 2,
   nombre: "Ana",
   correo: "ana@example.com",
-  rol: { codigo: "cliente", nombre: "Cliente" },
+  rol: { codigo: "cliente", nombre: "Cliente",permisos:["categorias.leer","productos.leer","clientes.leer","clientes.editar","pedidos.leer","pedidos.crear","pedidos.editar","pedidos.eliminar","detalles-pedido.leer","detalles-pedido.crear","detalles-pedido.editar","detalles-pedido.eliminar","pagos.leer","agenda.leer"] },
   cliente: { id: 3, usuarioId: 2, nombre: "Ana", telefono: "0000-7788" },
 };
 const admin = {
@@ -58,6 +59,8 @@ const product = {
   categoriaId: 1,
   precio: "700.00",
   activo: true,
+  stock: 20,
+  stockMinimo: 5,
   categoria: { id: 1, nombre: "Paletas" },
 };
 const order = {
@@ -66,6 +69,8 @@ const order = {
   cliente: client.cliente,
   fecha: "2026-11-05T16:20:33.000Z",
   estado: "pendiente",
+  fechaEntrega: "2026-11-06T18:00:00.000Z",
+  observaciones: "Sin azúcar extra",
   total: "1400.00",
   detalles: [
     {
@@ -134,6 +139,104 @@ afterEach(() => {
 after(async () => {
   await vite.close();
   dom.window.close();
+});
+registerOperations(()=>({ui,render,admin,client,order,product,requests,defaults,response,dom}));
+
+test("productos muestra stock y permite definir el aviso de pocas unidades", async () => {
+  render('/productos',admin);
+  await ui.waitFor(()=>assert.ok(ui.screen.getByText('En stock')));
+  ui.fireEvent.click(ui.screen.getByRole('button',{name:'Editar'}));
+  assert.equal(ui.screen.getByLabelText('Unidades disponibles').value,'20');
+  assert.equal(ui.screen.getByLabelText('Avisar con esta cantidad o menos').value,'5');
+});
+
+test("pedido envía entrega y observaciones con zona de Costa Rica", async () => {
+  globalThis.fetch=async(path,options={})=>{
+    if(options.method==='PUT'){requests.push({path,options});return response(order);}
+    return defaults(path,options);
+  };
+  render('/pedidos',client);
+  await ui.waitFor(()=>assert.ok(ui.screen.getByRole('button',{name:'Editar'})));
+  ui.fireEvent.click(ui.screen.getByRole('button',{name:'Editar'}));
+  const delivery=ui.screen.getByLabelText('Entrega programada · Costa Rica (opcional)');
+  assert.equal(new Date(delivery.value+'-06:00').toISOString(),order.fechaEntrega);
+  ui.fireEvent.change(ui.screen.getByLabelText('Observaciones (opcional)'),{target:{value:'Llamar al llegar'}});
+  ui.fireEvent.click(ui.screen.getByRole('button',{name:'Guardar pedido'}));
+  await ui.waitFor(()=>assert.ok(requests.find(r=>r.options.method==='PUT')));
+  const body=JSON.parse(requests.find(r=>r.options.method==='PUT').options.body);
+  assert.equal(body.fechaEntrega,order.fechaEntrega);assert.equal(body.observaciones,'Llamar al llegar');
+});
+
+test("filtros de pedidos consultan el servidor por cliente, fechas y estado", async () => {
+  globalThis.fetch=async(path,options={})=>{
+    if(path.includes('/pedidos?')){requests.push({path,options});return response([order]);}
+    return defaults(path,options);
+  };
+  render('/pedidos',admin);
+  await ui.waitFor(()=>assert.ok(ui.screen.getByRole('button',{name:'Editar'})));
+  for(const [label,value] of [['Buscar cliente, teléfono o pedido','Ana'],['Cliente del pedido','3'],['Desde (fecha del pedido)','2026-11-01'],['Hasta (Costa Rica)','2026-11-06'],['Filtrar por estado','pendiente']])
+    ui.fireEvent.change(ui.screen.getByLabelText(label),{target:{value}});
+  ui.fireEvent.click(ui.screen.getByRole('button',{name:'Aplicar filtros'}));
+  await ui.waitFor(()=>assert.ok(requests.find(r=>r.path.includes('/pedidos?'))));
+  const query=new URL(requests.find(r=>r.path.includes('/pedidos?')).path,'http://localhost').searchParams;
+  assert.equal(query.get('clienteId'),'3');assert.equal(query.get('buscar'),'Ana');assert.equal(query.get('desde'),'2026-11-01');assert.equal(query.get('hasta'),'2026-11-06');assert.equal(query.get('estado'),'pendiente');
+});
+
+test("comprobante consulta el pedido e imprime sus importes históricos", async () => {
+  let printed=0;dom.window.print=()=>printed++;
+  globalThis.fetch=async(path,options={})=>path.endsWith('/pedidos/5')?response(order):defaults(path,options);
+  render('/pedidos/5/comprobante',client);
+  await ui.waitFor(()=>assert.ok(ui.screen.getByRole('heading',{name:'Comprobante de pedido'})));
+  assert.ok(ui.screen.getByText(order.observaciones));assert.ok(ui.screen.getByText('Paleta de prueba'));
+  ui.fireEvent.click(ui.screen.getByRole('button',{name:'Imprimir comprobante'}));assert.equal(printed,1);
+});
+
+test("ventas muestra resumen y comparación y está restringida al administrador", async () => {
+  render('/ventas',client);
+  assert.ok(ui.screen.getByRole('heading',{name:'Acceso restringido'}));
+  assert.equal(requests.length,0);
+  ui.cleanup();
+  globalThis.fetch=async(path,options={})=>path.includes('/reportes/ventas?')?response({periodo:{desde:'2026-11-01',hasta:'2026-11-05'},periodoAnterior:{desde:'2026-10-27',hasta:'2026-10-31'},resumen:{total:'1400.00',pedidos:1,unidades:2,ticketPromedio:'1400.00'},anterior:{total:'700.00',pedidos:1},variacionPorcentaje:100,productos:[{productoId:4,nombre:product.nombre,unidades:2,total:'1400.00'}],dias:[{fecha:'2026-11-05',total:'1400.00'}]}):defaults(path,options);
+  render('/ventas',admin);
+  await ui.waitFor(()=>assert.ok(ui.screen.getByRole('heading',{name:'Productos más vendidos'})));
+  assert.ok(ui.screen.getByText(/Variación de ventas: \+100/));
+});
+
+test("cambiar contraseña comprueba confirmación y vuelve al login tras guardar", async () => {
+  await login();
+  ui.fireEvent.click(ui.screen.getByRole('link',{name:/Mi contraseña/}));
+  await ui.waitFor(()=>assert.ok(ui.screen.getByLabelText('Contraseña actual')));
+  globalThis.fetch=async(path,options={})=>{
+    if(path.endsWith('/auth/change-password')){requests.push({path,options});cookieUser=null;return response(null,204);}
+    return defaults(path,options);
+  };
+  for(const [label,value] of [['Contraseña actual','Anterior2026!'],['Nueva contraseña','Nueva2026!'],['Confirmar nueva contraseña','Otra2026!']])ui.fireEvent.change(ui.screen.getByLabelText(label),{target:{value}});
+  ui.fireEvent.click(ui.screen.getByRole('button',{name:'Actualizar contraseña'}));
+  assert.ok(ui.screen.getByText('Las contraseñas nuevas no coinciden.'));
+  assert.equal(requests.filter(r=>r.path.endsWith('/auth/change-password')).length,0);
+  ui.fireEvent.change(ui.screen.getByLabelText('Confirmar nueva contraseña'),{target:{value:'Nueva2026!'}});
+  ui.fireEvent.click(ui.screen.getByRole('button',{name:'Actualizar contraseña'}));
+  await ui.waitFor(()=>assert.ok(ui.screen.getByRole('heading',{name:'Un dulce regreso.'})));
+  const sent=requests.find(r=>r.path.endsWith('/auth/change-password'));
+  assert.deepEqual(JSON.parse(sent.options.body),{passwordActual:'Anterior2026!',passwordNueva:'Nueva2026!'});
+  assert.equal(sent.options.credentials,'include');
+});
+
+test("administración permite desactivar una cuenta conservando sus datos", async () => {
+  const account={id:2,nombre:'Ana',correo:client.correo,id_rol:2,rol:{id:2,codigo:'cliente',nombre:'Cliente'},activo:true,cliente:client.cliente};
+  globalThis.fetch=async(path,options={})=>{
+    if(path.endsWith('/usuarios/2') && options.method==='PUT'){requests.push({path,options});return response({...account,activo:false});}
+    if(path.endsWith('/usuarios'))return response([account]);
+    if(path.endsWith('/roles'))return response([account.rol]);
+    return defaults(path,options);
+  };
+  render('/usuarios',admin);
+  await ui.waitFor(()=>assert.ok(ui.screen.getByRole('button',{name:'Editar'})));
+  ui.fireEvent.click(ui.screen.getByRole('button',{name:'Editar'}));
+  ui.fireEvent.click(ui.screen.getByLabelText('Cuenta activa'));
+  ui.fireEvent.click(ui.screen.getByRole('button',{name:'Guardar'}));
+  await ui.waitFor(()=>assert.ok(requests.find(r=>r.path.endsWith('/usuarios/2'))));
+  assert.equal(JSON.parse(requests.find(r=>r.path.endsWith('/usuarios/2')).options.body).activo,false);
 });
 test("recargar restaura la sesión desde la cookie sin volver a enviar credenciales", async () => {
   await login();
@@ -209,8 +312,10 @@ function render(path, user = null, real = false) {
           value: {
             usuario: user,
             isAdmin: user?.rol.codigo === "administrador",
+            can:(resource,action="leer")=>user?.rol.codigo === "administrador" || user?.rol.permisos?.includes(resource+"."+action),
             logout: () => {},
             refresh: async () => user,
+            clearSession:()=>{},
             message: "",
           },
         },
@@ -272,6 +377,7 @@ test("login utiliza cookies, envía prueba CSRF y logout vuelve al login", async
   assert.equal(signIn.options.headers.Authorization, undefined);
   assert.equal(signIn.options.credentials, "include");
   assert.equal(signIn.options.headers["X-CSRF-Token"], "prueba-csrf");
+  await ui.waitFor(()=>assert.ok(requests.find(r=>r.path.endsWith('/pedidos'))));
   assert.equal(
     requests.find((r) => r.path.endsWith("/pedidos")).options.credentials,
     "include",
@@ -466,7 +572,7 @@ test("producto histórico inactivo sigue visible al editar y no habilita product
   );
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Editar" }));
   assert.ok(
-    ui.screen.getByRole("option", { name: "Paleta de prueba (inactivo)" }),
+    ui.screen.getByRole("option", { name: /Paleta de prueba.*inactivo/ }),
   );
   assert.equal(
     ui.screen.getByRole("button", { name: "+ Agregar línea" }).disabled,

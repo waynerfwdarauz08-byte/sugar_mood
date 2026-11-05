@@ -21,9 +21,10 @@ module.exports = async (req, res, next) => {
   } catch {
     return unauthorized();
   }
-  if (!/^\d+$/.test(payload.sub || "")) return unauthorized();
+  if (!Number.isInteger(payload.ver) || payload.ver < 0 || !/^\d+$/.test(payload.sub || "")) return unauthorized();
   try {
-    req.usuario = await auth.current(Number(payload.sub));
+    req.usuario = await auth.current(Number(payload.sub), undefined, payload.ver);
+    if(require("../services/auditService").context.getStore()) require("../services/auditService").context.getStore().usuario=req.usuario;
     req.sessionExpiresAt = new Date(payload.exp * 1000).toISOString();
     next();
   } catch (e) {

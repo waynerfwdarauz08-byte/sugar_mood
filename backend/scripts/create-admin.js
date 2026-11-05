@@ -15,7 +15,7 @@ const v = require("../services/validation");
       });
       if (!role) throw new Error("Ejecute primero las migraciones.");
       if (
-        await db.Usuario.count({ where: { id_rol: role.id }, transaction: t })
+        await db.Usuario.count({ where: { id_rol: role.id, activo: true }, transaction: t })
       )
         throw new Error(
           "Ya existe un administrador. Use la administración de usuarios.",

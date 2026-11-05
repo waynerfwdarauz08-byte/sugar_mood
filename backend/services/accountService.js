@@ -5,7 +5,8 @@ async function find(kind, id, t) {
   const model = kind === "roles" ? db.Rol : db.Usuario;
   const row = await model.findByPk(v.integer(id), {
     transaction: t,
-    ...(kind === "usuarios" ? { include: auth.include } : {}),
+    ...(kind === "usuarios" ? { include: auth.include } : {include:[{model:db.RolPermiso,as:"asignaciones"}]}),
+    ...(t ? {lock:t.LOCK.UPDATE} : {}),
   });
   if (!row) v.fail("Registro no encontrado.", 404);
   return row;
@@ -19,23 +20,26 @@ async function adminLock(t) {
   if (!role) throw new Error("Falta rol administrador.");
   return role;
 }
-async function lastAdmin(row, newRole, t) {
+async function lastAdmin(row, newRole, t, active = true) {
   const role = await adminLock(t);
   if (
     row?.id_rol === role.id &&
-    newRole !== role.id &&
-    (await db.Usuario.count({ where: { id_rol: role.id }, transaction: t })) <=
+    row.activo &&
+    (newRole !== role.id || !active) &&
+    (await db.Usuario.count({ where: { id_rol: role.id, activo:true }, transaction: t })) <=
       1
   )
     v.fail("Debe conservarse al menos un administrador.", 409);
 }
 function output(kind, row) {
-  return kind === "roles" ? row.toJSON() : auth.publicUser(row);
+  if(kind !== "roles") return auth.publicUser(row);
+  const role=row.toJSON();
+  return {...role,permisos:role.codigo === "administrador" ? require("./permissionService").catalog : (role.asignaciones||[]).map(p=>p.permiso),asignaciones:undefined};
 }
 async function list(kind) {
   return (
     await (kind === "roles" ? db.Rol : db.Usuario).findAll({
-      ...(kind === "usuarios" ? { include: auth.include } : {}),
+      ...(kind === "usuarios" ? { include: auth.include } : {include:[{model:db.RolPermiso,as:"asignaciones"}]}),
       order: [["id", "DESC"]],
     })
   ).map((row) => output(kind, row));
@@ -45,7 +49,7 @@ async function get(kind, id) {
 }
 async function save(kind, id, body) {
   if (kind === "roles") {
-    v.object(body, ["codigo", "nombre", "descripcion"]);
+    v.object(body, ["codigo", "nombre", "descripcion", "permisos"]);
     const codigo = v.text(body.codigo, "codigo", 40);
     if (!/^[a-z][a-z0-9_]*$/.test(codigo))
       v.fail("El código del rol debe usar minúsculas, números o guion bajo.");
@@ -62,12 +66,15 @@ async function save(kind, id, body) {
         row.codigo !== codigo
       )
         v.fail("No puedes cambiar el código de un rol del sistema.", 409);
-      return output(
-        kind,
-        row
-          ? await row.update(data, { transaction: t })
-          : await db.Rol.create(data, { transaction: t }),
-      );
+      const saved=row ? await row.update(data,{transaction:t}) : await db.Rol.create(data,{transaction:t});
+      if(body.permisos !== undefined) {
+        const permisos=require("./permissionService").validate(body.permisos,saved.codigo);
+        const previous=await db.RolPermiso.findAll({where:{id_rol:saved.id},transaction:t});
+        await db.RolPermiso.destroy({where:{id_rol:saved.id},transaction:t});
+        if(permisos.length) await db.RolPermiso.bulkCreate(permisos.map(permiso=>({id_rol:saved.id,permiso})),{transaction:t});
+        await require("./auditService").record(db,"roles",saved.id,"permisos",{permisos:previous.map(p=>p.permiso)},{permisos},t);
+      }
+      return output(kind,await find(kind,saved.id,t));
     });
   }
   v.object(body, [
@@ -78,6 +85,7 @@ async function save(kind, id, body) {
     "telefono",
     "direccion",
     "clienteId",
+    "activo",
   ]);
   const data = {
     nombre: v.text(body.nombre, "nombre", 100),
@@ -86,12 +94,19 @@ async function save(kind, id, body) {
   };
   if (!id || body.password !== undefined)
     data.password = await auth.hash(body.password);
+  if (body.activo !== undefined) {
+    if (typeof body.activo !== "boolean") v.fail("activo debe ser booleano.");
+    data.activo = body.activo;
+  }
   const uid = await db.sequelize.transaction(async (t) => {
     await adminLock(t);
     const row = id ? await find(kind, id, t) : null;
     const role = await db.Rol.findByPk(data.id_rol, { transaction: t });
     if (!role) v.fail("El rol no existe.");
-    if (row) await lastAdmin(row, data.id_rol, t);
+    if (row) {
+      await lastAdmin(row, data.id_rol, t, data.activo ?? row.activo);
+      if (data.password || (data.activo !== undefined && data.activo !== row.activo)) data.sesionVersion = row.sesionVersion + 1;
+    }
     const saved = row
       ? await row.update(data, { transaction: t })
       : await db.Usuario.create(data, { transaction: t });

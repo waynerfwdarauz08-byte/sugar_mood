@@ -9,14 +9,14 @@ export default function Login() {
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   if (cargando) return <p role="status">Recuperando sesión…</p>;
-  if (usuario) return <Navigate to="/pedidos" replace />;
+  if (usuario) return <Navigate to="/" replace />;
   async function submit(e) {
     e.preventDefault();
     setBusy(true);
     setError("");
     try {
       await login(form);
-      navigate("/pedidos", { replace: true });
+      navigate("/", { replace: true });
     } catch (e) {
       setError(e.message);
     } finally {
@@ -64,6 +64,7 @@ export default function Login() {
       <p>
         ¿Primera vez? <Link to="/registro">Crear cuenta de cliente</Link>
       </p>
+      <p><Link to="/recuperar">Olvidé mi contraseña</Link></p>
       <small>
         La sesión se conserva al recargar y vence una hora después de iniciar
         sesión.

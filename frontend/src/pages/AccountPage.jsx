@@ -1,3 +1,5 @@
+import {api} from "../services/api";
+import {clientPermissionCodes} from '../services/permissionService';
 import { useEffect, useState } from "react";
 import { usuarioService } from "../services/usuarioService";
 import { rolService } from "../services/rolService";
@@ -16,6 +18,7 @@ export default function AccountPage({ kind }) {
     service = isRole ? rolService : usuarioService;
   const [rows, setRows] = useState([]),
     [roles, setRoles] = useState([]),
+    [permissionCatalog,setPermissionCatalog]=useState([]),
     [clients, setClients] = useState([]),
     [loading, setLoading] = useState(true),
     [error, setError] = useState(""),
@@ -28,12 +31,14 @@ export default function AccountPage({ kind }) {
     setLoading(true);
     setError("");
     try {
-      const [r, s, c] = await Promise.all([
+      const [r, s, c, permissions] = await Promise.all([
         service.list(),
         isRole ? Promise.resolve([]) : rolService.list(),
         isRole ? Promise.resolve([]) : clienteService.list(),
+        isRole ? api.list("roles/permisos") : Promise.resolve([]),
       ]);
       setRows(r);
+      setPermissionCatalog(permissions);
       setRoles(s);
       setClients(c);
     } catch (e) {
@@ -55,12 +60,14 @@ export default function AccountPage({ kind }) {
             codigo: row?.codigo || "",
             nombre: row?.nombre || "",
             descripcion: row?.descripcion || "",
+            permisos:row?.permisos || [],
           }
         : {
             id: row?.id,
             nombre: row?.nombre || "",
             correo: row?.correo || "",
             password: "",
+            activo: row?.activo ?? true,
             id_rol: row?.id_rol || "",
             telefono: row?.cliente?.telefono || "",
             direccion: row?.cliente?.direccion || "",
@@ -74,6 +81,7 @@ export default function AccountPage({ kind }) {
     setFormError("");
     try {
       const { id, ...body } = form;
+      if(isRole && form.codigo === "administrador")delete body.permisos;
       if (!isRole) {
         body.id_rol = Number(body.id_rol);
         if (id && !body.password) delete body.password;
@@ -116,7 +124,7 @@ export default function AccountPage({ kind }) {
         title={isRole ? "Roles" : "Usuarios"}
         description={
           isRole
-            ? "Roles del sistema y sus identificadores. Los permisos nuevos requieren definición en el backend."
+            ? "Configura los permisos de cada rol. Cliente conserva acceso exclusivo a sus propios datos; los otros roles operan sobre el negocio."
             : "Cuentas y roles. El perfil de cliente conserva sus pedidos al eliminar una cuenta."
         }
         action={
@@ -143,7 +151,7 @@ export default function AccountPage({ kind }) {
                   <th>Nombre</th>
                   <th>{isRole ? "Código" : "Correo"}</th>
                   {isRole && <th>Descripción</th>}
-                  {!isRole && <th>Rol</th>}
+                  {!isRole && <><th>Rol</th><th>Estado</th></>}
                   <th>Acciones</th>
                 </tr>
               </thead>
@@ -156,7 +164,7 @@ export default function AccountPage({ kind }) {
                     </td>
                     <td>{isRole ? row.codigo : row.correo}</td>
                     {isRole && <td>{row.descripcion || "—"}</td>}
-                    {!isRole && <td>{row.rol?.nombre}</td>}
+                    {!isRole && <><td>{row.rol?.nombre}</td><td><span className={"badge " + (row.activo ? "entregado" : "cancelado")}>{row.activo ? "Activo" : "Desactivado"}</span></td></>}
                     <td>
                       <Actions
                         onEdit={() => open(row)}
@@ -198,6 +206,16 @@ export default function AccountPage({ kind }) {
               </Field>
               {isRole ? (
                 <>
+                  <fieldset className="permission-grid" disabled={form.codigo === "administrador"}>
+                    <legend>Permisos del rol</legend>
+                    {permissionCatalog.filter(p=>form.codigo!=='cliente'||clientPermissionCodes.includes(p)).map(p=><label className="check" key={p}><input type="checkbox" checked={form.codigo === "administrador" || form.permisos.includes(p)} onChange={e=>{
+                      const values=new Set(form.permisos),[resource,action]=p.split(".");
+                      if(e.target.checked){values.add(p);values.add(resource+".leer");if(["pagos","agenda","detalles-pedido"].includes(resource))values.add("pedidos.leer");if(p==="inventario.crear"||resource==="detalles-pedido")values.add("productos.leer");if(["productos.crear","productos.editar"].includes(p))values.add("categorias.leer");if(["pedidos.crear","pedidos.editar"].includes(p)){values.add("productos.leer");values.add("clientes.leer");}}
+                      else {values.delete(p);if(action==="leer")for(const key of values)if(key.startsWith(resource+"."))values.delete(key);}
+                      setForm({...form,permisos:[...values]});
+                    }}/>{p.replace(".leer"," · consultar").replace(".crear"," · crear").replace(".editar"," · editar").replace(".eliminar"," · eliminar").replace(".anular"," · anular")}</label>)}
+                  </fieldset>
+                  <p className="helper">Administrador conserva acceso completo. Cliente admite únicamente consulta de catálogo, perfil propio, pedidos propios, agenda y pagos propios. Las reglas se validan también en el servidor.</p>
                   <Field label="Código estable">
                     <input
                       required
@@ -255,6 +273,8 @@ export default function AccountPage({ kind }) {
                       }
                     />
                   </Field>
+                  <label className="check"><input type="checkbox" checked={form.activo} onChange={e => setForm({...form,activo:e.target.checked})} /> Cuenta activa</label>
+                  <p className="helper">Desactivar bloquea el acceso y cierra las sesiones anteriores. Conserva los pedidos.</p>
                   <Field label="Rol">
                     <select
                       required

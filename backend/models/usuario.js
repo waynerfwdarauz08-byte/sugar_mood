@@ -19,6 +19,8 @@ module.exports = (sequelize, D) =>
         unique: true,
         validate: { isEmail: true },
       },
+      activo: {type:D.BOOLEAN, allowNull:false, defaultValue:true},
+      sesionVersion: {type:D.INTEGER, allowNull:false, defaultValue:0},
       password: { type: D.STRING(255), allowNull: false },
       fechaCreacion: { type: D.DATE, allowNull: false, defaultValue: D.NOW },
       id_rol: { type: D.INTEGER, allowNull: false },

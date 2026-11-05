@@ -14,7 +14,8 @@ import {
   ConfirmDelete,
 } from "../components/UI";
 export default function DetallesPedido() {
-  const { isAdmin } = useAuth();
+  const { usuario, can } = useAuth();
+  const isAdmin=usuario?.rol.codigo !== "cliente";
   const [rows, setRows] = useState([]),
     [orders, setOrders] = useState([]),
     [products, setProducts] = useState([]),
@@ -99,7 +100,9 @@ export default function DetallesPedido() {
       setBusy(false);
     }
   }
-  const editable = orders.filter((o) => isAdmin || o.estado === "pendiente");
+  const editable = orders.filter((o) =>
+    isAdmin ? ["pendiente", "preparado"].includes(o.estado) : o.estado === "pendiente",
+  );
   const selectedOrder = orders.find((o) => o.id === Number(form?.pedidoId));
   const available = products.filter(
     (p) =>
@@ -112,7 +115,7 @@ export default function DetallesPedido() {
         title={isAdmin ? "Detalles de pedidos" : "Mis detalles"}
         description="Cada producto conserva su precio histórico. El último detalle no puede eliminarse."
         action={
-          <button disabled={!editable.length} onClick={() => open()}>
+          can("detalles-pedido","crear") && <button disabled={!editable.length} onClick={() => open()}>
             + Agregar detalle
           </button>
         }
@@ -149,10 +152,8 @@ export default function DetallesPedido() {
                     <td>{currency(r.precioUnitario)}</td>
                     <td>{currency(r.subtotal)}</td>
                     <td>
-                      {(isAdmin ||
-                        orders.find((o) => o.id === r.pedidoId)?.estado ===
-                          "pendiente") && (
-                        <Actions
+                      {editable.some((o) => o.id === r.pedidoId) && (
+                        <Actions canEdit={can("detalles-pedido","editar")} canDelete={can("detalles-pedido","eliminar")}
                           onEdit={() => open(r)}
                           onDelete={() => {
                             setFormError("");

@@ -34,6 +34,8 @@ function run(args) {
     run([cli, "db:seed:all"]);
     run([cli, "db:seed:all"]);
     run(["--test", "tests/validation.test.js", "tests/mysql.test.js"]);
+    run(["--test", "tests/enhancements.test.js"]);
+    run(["--test", "tests/operations.test.js"]);
     run([cli, "db:migrate:undo:all"]);
     run([cli, "db:migrate"]);
     console.log(

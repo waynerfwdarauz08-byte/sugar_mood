@@ -34,17 +34,18 @@ function publicUser(row) {
     correo: u.correo,
     fechaCreacion: u.fechaCreacion,
     id_rol: u.id_rol,
-    rol: u.rol,
+    activo: u.activo,
+    rol: u.rol ? {...u.rol,permisos:u.rol.codigo === "administrador" ? require("./permissionService").catalog : (u.rol.asignaciones||[]).map(p=>p.permiso),asignaciones:undefined} : null,
     cliente: u.cliente || null,
   };
 }
 const include = [
-  { model: db.Rol, as: "rol" },
+  { model: db.Rol, as: "rol", include:[{model:db.RolPermiso,as:"asignaciones"}] },
   { model: db.Cliente, as: "cliente" },
 ];
-async function current(id, t) {
+async function current(id, t, version) {
   const u = await db.Usuario.findByPk(id, { include, transaction: t });
-  if (!u) v.fail("No autorizado", 401);
+  if (!u || !u.activo || (version !== undefined && u.sesionVersion !== version)) v.fail("No autorizado", 401);
   return publicUser(u);
 }
 async function register(body) {
@@ -93,10 +94,10 @@ async function login(body) {
   const fallback =
     "$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxQzZVmB6hJqaqP9FCljM0N0GWe";
   const valid = await bcrypt.compare(body.password, row?.password || fallback);
-  if (!row || !valid) v.fail("Credenciales incorrectas.", 401);
+  if (!row || !valid || !row.activo) v.fail("Credenciales incorrectas.", 401);
   const config = settings();
   return {
-    token: jwt.sign({}, config.secret, {
+    token: jwt.sign({ver:row.sesionVersion}, config.secret, {
       subject: String(row.id),
       algorithm: "HS256",
       expiresIn: "1h",
@@ -106,7 +107,20 @@ async function login(body) {
     usuario: await current(row.id),
   };
 }
+async function changePassword(id, body) {
+  v.object(body,["passwordActual","passwordNueva"]);
+  if (typeof body.passwordActual !== "string" || Buffer.byteLength(body.passwordActual)>72) v.fail("Contraseña actual incorrecta.",400);
+  const password = await hash(body.passwordNueva);
+  await db.sequelize.transaction(async t => {
+    const row = await db.Usuario.scope("conPassword").findByPk(id,{transaction:t,lock:t.LOCK.UPDATE});
+    if (!row?.activo) v.fail("No autorizado",401);
+    if (!await bcrypt.compare(body.passwordActual,row.password)) v.fail("Contraseña actual incorrecta.",400);
+    if (body.passwordActual === body.passwordNueva) v.fail("Elige una contraseña diferente.");
+    await row.update({password,sesionVersion:row.sesionVersion+1},{transaction:t});
+  });
+}
 module.exports = {
+  changePassword,
   settings,
   correo,
   hash,

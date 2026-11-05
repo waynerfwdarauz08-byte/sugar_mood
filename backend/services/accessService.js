@@ -3,7 +3,7 @@ const v = require("./validation");
 const isAdmin = (user) => user?.rol?.codigo === "administrador";
 function known(user) {
   if (!user) v.fail("No autorizado", 401);
-  if (!["administrador", "cliente"].includes(user.rol?.codigo))
+  if (!isAdmin(user) && !user.rol?.permisos?.length)
     v.fail("El rol no tiene permisos asignados.", 403);
 }
 function clientId(user) {
@@ -13,7 +13,8 @@ function clientId(user) {
 }
 async function check(kind, row, user, t, write = false) {
   known(user);
-  if (isAdmin(user)) return;
+  require("./permissionService").requirePermission(user,kind,"leer");
+  if (user.rol.codigo !== "cliente") return;
   if (["categorias", "productos"].includes(kind)) {
     if (write)
       v.fail("Solo el administrador puede modificar el catálogo.", 403);

@@ -14,6 +14,11 @@ module.exports = (kind) => {
         }[kind] +
         "Controller",
     );
+  if(!["usuarios","roles"].includes(kind)) r.use((req,res,next)=>{
+    const action={GET:"leer",POST:"crear",PUT:"editar",DELETE:"eliminar"}[req.method];
+    return require("../middlewares/permissionMiddleware")(kind,action)(req,res,next);
+  });
+  if(kind==='roles')r.get('/permisos',(req,res)=>res.json(require('../services/permissionService').catalog));
   r.get("/", c.list);
   r.get("/:id", c.get);
   r.post("/", c.create);

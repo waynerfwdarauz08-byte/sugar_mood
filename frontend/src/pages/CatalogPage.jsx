@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import {operacionService} from "../services/operacionService";
 import { currency } from "../services/api";
 import { useAuth } from "../context/AuthContext";
 import { catalogServices, categoriaService } from "../services/catalogServices";
@@ -30,13 +31,14 @@ const settings = {
 };
 const blank = (kind) =>
   kind === "productos"
-    ? { nombre: "", categoriaId: "", precio: "", activo: true }
+    ? { nombre: "", categoriaId: "", precio: "", activo: true, stock: 0, stockMinimo: 5, imagen: null }
     : kind === "clientes"
       ? { nombre: "", telefono: "", direccion: "" }
       : { nombre: "", descripcion: "" };
 export default function CatalogPage({ kind }) {
-  const { isAdmin, refresh } = useAuth();
-  const readOnly = !isAdmin && kind !== "clientes";
+  const { usuario, refresh, can } = useAuth();
+  const isAdmin=usuario?.rol.codigo !== "cliente";
+  const [imageFile,setImageFile]=useState(null);
   const service = catalogServices[kind];
   const s = settings[kind];
   const [rows, setRows] = useState([]),
@@ -79,6 +81,7 @@ export default function CatalogPage({ kind }) {
     load();
   }, [kind]);
   function open(row) {
+    setImageFile(null);
     setSuccess("");
     setFormError("");
     setForm(
@@ -107,6 +110,7 @@ export default function CatalogPage({ kind }) {
     try {
       const { id, ...body } = form;
       if (kind === "productos") body.categoriaId = Number(body.categoriaId);
+      if(kind === "productos" && imageFile) body.imagen=(await operacionService.subirImagen(imageFile)).imagen;
       await service.save(id, body);
       if (!isAdmin && kind === "clientes") await refresh();
       setForm(null);
@@ -142,7 +146,7 @@ export default function CatalogPage({ kind }) {
         title={!isAdmin && kind === "clientes" ? "Mi perfil" : s.title}
         description={s.description}
         action={
-          isAdmin && (
+          can(kind,"crear") && (
             <button onClick={() => open()}>
               + {kind === "categorias" ? "Nueva" : "Nuevo"}{" "}
               {s.one === "producto"
@@ -200,7 +204,7 @@ export default function CatalogPage({ kind }) {
                   {kind === "productos" ? (
                     <>
                       <th>Categoría</th>
-                      <th>Precio</th>
+                      <th>Precio</th><th>Disponibles</th>
                       <th>Estado</th>
                     </>
                   ) : kind === "clientes" ? (
@@ -218,13 +222,14 @@ export default function CatalogPage({ kind }) {
                 {filtered.map((r) => (
                   <tr key={r.id}>
                     <td>
+                      {kind === "productos" && r.imagen && <img className="product-thumb" src={r.imagen} alt={r.nombre} loading="lazy" />}
                       <strong>{r.nombre}</strong>
                       <small>#{String(r.id).padStart(3, "0")}</small>
                     </td>
                     {kind === "productos" ? (
                       <>
                         <td>{r.categoria?.nombre}</td>
-                        <td>{currency(r.precio)}</td>
+                        <td>{currency(r.precio)}</td><td><strong>{r.stock ?? 0}</strong><small>{r.stock === 0 ? "Agotado" : r.stock <= r.stockMinimo ? "Stock bajo" : "En stock"}</small></td>
                         <td>
                           <span
                             className={
@@ -244,7 +249,7 @@ export default function CatalogPage({ kind }) {
                       <td>{r.descripcion || "—"}</td>
                     )}
                     <td>
-                      {!readOnly && (
+                      {(can(kind,"editar") || can(kind,"eliminar")) && (
                         <Actions
                           onEdit={() => open(r)}
                           onDelete={() => {
@@ -252,7 +257,8 @@ export default function CatalogPage({ kind }) {
                             setFormError("");
                             setTarget(r);
                           }}
-                          canDelete={isAdmin}
+                          canEdit={can(kind,"editar")}
+                          canDelete={can(kind,"eliminar")}
                         />
                       )}
                     </td>
@@ -262,7 +268,7 @@ export default function CatalogPage({ kind }) {
                   <tr>
                     <td
                       colSpan={
-                        kind === "productos" ? 5 : kind === "clientes" ? 4 : 3
+                        kind === "productos" ? 6 : kind === "clientes" ? 4 : 3
                       }
                     >
                       No hay coincidencias.
@@ -355,6 +361,16 @@ export default function CatalogPage({ kind }) {
                       onChange={change}
                     />
                   </Field>
+                  <Field label="Unidades disponibles"><input required type="number" min="0" max="2147483647" step="1" name="stock" value={form.stock} onChange={change} /></Field>
+                  <Field label="Avisar con esta cantidad o menos"><input required type="number" min="0" max="2147483647" step="1" name="stockMinimo" value={form.stockMinimo} onChange={change} /></Field>
+                  <p className="helper">Introduce las unidades disponibles para nuevos pedidos; las unidades reservadas ya están descontadas.</p>
+                  <Field label="Imagen del producto (PNG o JPEG, hasta 2 MB)"><input type="file" accept="image/png,image/jpeg" onChange={e=>{
+                    const file=e.target.files?.[0];
+                    if(file && (file.size>2*1024*1024 || !["image/png","image/jpeg"].includes(file.type))){setFormError("Selecciona un PNG o JPEG de hasta 2 MB.");e.target.value="";setImageFile(null);return;}
+                    setFormError("");setImageFile(file||null);
+                  }} /></Field>
+                  {form.imagen && <div><img className="product-preview" src={form.imagen} alt="Imagen actual"/><button type="button" className="secondary" onClick={()=>setForm({...form,imagen:null})}>Quitar imagen actual</button></div>}
+                  {imageFile && <p>Imagen seleccionada: {imageFile.name}</p>}
                   <label className="check">
                     <input
                       type="checkbox"

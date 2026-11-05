@@ -21,8 +21,8 @@ const entities = [
     40,
     310,
     330,
-    200,
-    "id INT PK AI\ncategoriaId INT FK NN\nnombre VARCHAR(100) NN UQ\nprecio DECIMAL(10,2) NN >= 0\nactivo BOOLEAN NN DEFAULT TRUE",
+    260,
+    "id INT PK AI\ncategoriaId INT FK NN\nnombre VARCHAR(100) NN UQ\nprecio DECIMAL(10,2) NN >= 0\nactivo BOOLEAN NN DEFAULT TRUE\nstock INT NN >= 0 DEFAULT 0\nstockMinimo INT NN >= 0 DEFAULT 5",
   ],
   [
     "detalles_pedido",
@@ -45,8 +45,8 @@ const entities = [
     480,
     310,
     360,
-    250,
-    "id INT PK AI\nnombre VARCHAR(100) NN\ncorreo VARCHAR(254) NN UQ\npassword VARCHAR(255) NN (hash bcrypt)\nfechaCreacion DATETIME NN DEFAULT NOW\nid_rol INT FK NN",
+    290,
+    "id INT PK AI\nnombre VARCHAR(100) NN\ncorreo VARCHAR(254) NN UQ\npassword VARCHAR(255) NN (hash bcrypt)\nfechaCreacion DATETIME NN DEFAULT NOW\nid_rol INT FK NN\nactivo BOOLEAN NN DEFAULT TRUE\nsesionVersion INT NN DEFAULT 0",
   ],
   [
     "clientes",
@@ -61,10 +61,19 @@ const entities = [
     960,
     700,
     360,
-    210,
-    "id INT PK AI\nclienteId INT FK NN\nfecha DATETIME NN\nestado ENUM NN DEFAULT pendiente\npendiente / preparado / entregado / cancelado",
+    280,
+    "id INT PK AI\nclienteId INT FK NN\nfecha DATETIME NN\nestado ENUM NN DEFAULT pendiente\npendiente / preparado / entregado / cancelado\nfechaEntrega DATETIME NULL\nobservaciones VARCHAR(500) NULL\nstockAplicado BOOLEAN NN DEFAULT FALSE",
   ],
 ];
+const layouts={productos:[40,300,400,300],detalles_pedido:[40,950,400,230],roles:[520,40,400,180],usuarios:[520,400,400,300],clientes:[1040,400,420,180],pedidos:[1040,950,420,320]};
+for(const entity of entities){if(layouts[entity[0]])entity.splice(1,4,...layouts[entity[0]]);if(entity[0]==="productos")entity[5]+="\nimagen VARCHAR(100) NULL";}
+entities.push(
+ ["rol_permisos",1040,40,420,180,"id_rol INT PK FK NN\npermiso VARCHAR(60) PK NN\nPK (id_rol, permiso)\nCatálogo de permisos validado por servidor"],
+ ["movimientos_inventario",40,1350,450,320,"id INT PK AI\nproductoId INT FK NULL\nproductoNombre VARCHAR(100) NN\npedidoId INT FK NULL\nusuarioId INT FK NULL\nusuarioNombre VARCHAR(100) NN\nfecha DATETIME NN\ntipo VARCHAR(30) NN / cantidad INT NN\nstockAnterior INT NN / stockPosterior INT NN\nmotivo VARCHAR(255) NN"],
+ ["pagos",1540,950,430,350,"id INT PK AI\npedidoId INT FK NN\nusuarioId INT FK NULL\nusuarioNombre VARCHAR(100) NN\nfecha DATETIME NN\nmonto DECIMAL(10,2) NN > 0\nmetodo ENUM NN\nreferencia VARCHAR(100) NULL\nestado ENUM NN DEFAULT registrado\nanulacionMotivo VARCHAR(255) NULL\nanuladoPor VARCHAR(100) NULL\nfechaAnulacion DATETIME NULL"],
+ ["auditoria",520,1350,450,300,"id INT PK AI\nusuarioId INT FK NULL\nusuarioNombre VARCHAR(100) NN\nfecha DATETIME NN\nentidad VARCHAR(60) NN\nregistroId INT NULL\naccion VARCHAR(30) NN\nantes JSON NULL / despues JSON NULL"],
+ ["recuperaciones_password",520,790,400,200,"usuarioId INT PK FK NN\ntokenHash CHAR(64) NN UQ\nvence DATETIME NN\ncreado DATETIME NN\nsesionVersion INT NN"]
+);
 let cells = '<mxCell id="0"/><mxCell id="1" parent="0"/>';
 for (const [name, x, y, w, h, fields] of entities)
   cells += `<mxCell id="${name}" value="${esc(name + "\n\n" + fields)}" style="rounded=0;whiteSpace=wrap;html=0;align=left;verticalAlign=top;spacing=14;fillColor=#e7f3ef;strokeColor=#126a6c;fontSize=14;fontFamily=Arial;" vertex="1" parent="1"><mxGeometry x="${x}" y="${y}" width="${w}" height="${h}" as="geometry"/></mxCell>`;
@@ -76,6 +85,16 @@ const edges = [
   ["clientes", "pedidos", "1", "0..N", 0.5, 1, 0.5, 0],
   ["pedidos", "detalles_pedido", "1", "1..N", 0, 0.5, 1, 0.5],
 ];
+edges.push(
+ ["roles","rol_permisos","1","0..N",1,0.5,0,0.5],
+ ["pedidos","pagos","1","0..N",1,0.5,0,0.5],
+ ["productos","movimientos_inventario","0..1","0..N",0,0.5,0,0.5],
+ ["pedidos","movimientos_inventario","0..1","0..N",0.5,1,1,0.5],
+ ["usuarios","movimientos_inventario","0..1","0..N",0,0.5,1,0.25],
+ ["usuarios","pagos","0..1","0..N",1,0.75,0.5,0],
+ ["usuarios","auditoria","0..1","0..N",0,0.75,0.5,0],
+ ["usuarios","recuperaciones_password","1","0..1",0.5,1,0.5,0]
+);
 edges.forEach(([from, to, a, b, ex, ey, ix, iy], i) => {
   cells += `<mxCell id="e${i}" style="edgeStyle=orthogonalEdgeStyle;endArrow=none;startArrow=none;strokeColor=#126a6c;exitX=${ex};exitY=${ey};entryX=${ix};entryY=${iy};" edge="1" parent="1" source="${from}" target="${to}"><mxGeometry relative="1" as="geometry"/></mxCell>`;
   for (const [side, label, x] of [
@@ -84,12 +103,12 @@ edges.forEach(([from, to, a, b, ex, ey, ix, iy], i) => {
   ])
     cells += `<mxCell id="label${i}${side}" value="${label}" style="edgeLabel;html=0;align=center;resizable=0;fontSize=14;labelBackgroundColor=#ffffff;" vertex="1" connectable="0" parent="e${i}"><mxGeometry x="${x}" relative="1" as="geometry"><mxPoint as="offset"/></mxGeometry></mxCell>`;
 });
-const notes =
-  "PK: primaria · FK: foránea · AI: autoincremental · NN: obligatorio · UQ: único\nFK: ON DELETE RESTRICT / ON UPDATE CASCADE. Sequelize: timestamps false.\nUsuario pertenece a un rol; puede tener cero o un perfil de cliente. Clientes anteriores pueden no tener cuenta.\nCada pedido tiene al menos un detalle: validado en servicio/transacción. Precio histórico conservado; totales calculados.\nRegistro público: Cliente. Administrador gestiona cuentas; cada cliente solo accede a su perfil, pedidos y detalles.\nfechaCreacion pertenece únicamente a usuarios; no se agregan timestamps a las entidades anteriores.";
-cells += `<mxCell id="notes" value="${esc(notes)}" style="text;html=0;align=left;whiteSpace=wrap;fontSize=14;" vertex="1" parent="1"><mxGeometry x="40" y="990" width="1280" height="170" as="geometry"/></mxCell>`;
+const notes = "Historiales: referencias opcionales SET NULL, con nombre conservado. Pagos conservan referencia RESTRICT al pedido. Rol-permisos y recuperaciones usan CASCADE.\nPermisos: Administrador completo; Cliente solo propios; roles nuevos configurables. Tokens de recuperación almacenados como hash, de un uso y 15 minutos.\n" +
+  "PK: primaria · FK: foránea · AI: autoincremental · NN: obligatorio · UQ: único\nFK: ON DELETE RESTRICT / ON UPDATE CASCADE. Sequelize: timestamps false.\nUsuario pertenece a un rol; puede tener cero o un perfil de cliente. Clientes anteriores pueden no tener cuenta.\nCada pedido tiene al menos un detalle: validado en servicio/transacción. Precio histórico conservado; totales calculados.\nRegistro público: Cliente. Administrador gestiona cuentas y permisos; cada cliente solo accede a sus datos.\nfechaCreacion pertenece únicamente a usuarios; no se agregan timestamps a las entidades anteriores.";
+cells += `<mxCell id="notes" value="${esc(notes)}" style="text;html=0;align=left;whiteSpace=wrap;fontSize=14;" vertex="1" parent="1"><mxGeometry x="40" y="1780" width="1930" height="180" as="geometry"/></mxCell>`;
 fs.writeFileSync(
   "docs/DER_SUGAR_MOOD.drawio",
-  `<mxfile host="app.diagrams.net"><diagram name="SUGAR MOOD · Día 2" id="sugar-mood"><mxGraphModel grid="1" page="1" pageWidth="1380" pageHeight="1200"><root>${cells}</root></mxGraphModel></diagram></mxfile>`,
+  `<mxfile host="app.diagrams.net"><diagram name="SUGAR MOOD · Día 2" id="sugar-mood"><mxGraphModel grid="1" page="1" pageWidth="2030" pageHeight="2000"><root>${cells}</root></mxGraphModel></diagram></mxfile>`,
 );
 const noAuth = { type: "noauth" };
 const tests = (status, extra = []) => [
@@ -240,11 +259,15 @@ const bodies = {
     nombre: "Paleta {{$timestamp}} (ejemplo)",
     precio: "700.00",
     activo: true,
+    stock:100,
+    stockMinimo:5,
   },
   pedidos: {
     clienteId: "{{clienteId}}",
     fecha: "2026-11-05T10:00:00-06:00",
     estado: "pendiente",
+    fechaEntrega:"2026-11-05T18:00:00-06:00",
+    observaciones:"Llamar al llegar",
     detalles: [{ productoId: "{{productoId}}", cantidad: 2 }],
   },
   "detalles-pedido": {
@@ -317,6 +340,7 @@ for (const kind of Object.keys(bodies)) {
           : body,
     ),
   );
+  if (kind === "usuarios") group[0].event[0].script.exec.push("if(pm.response.code===201)pm.collectionVariables.set('cuentaTemporalCorreo',pm.response.json().correo);");
   if (kind === "roles")
     group[0].event[0].script.exec.push(
       "if(pm.response.code===201)pm.collectionVariables.set('codigoRol',pm.response.json().codigo);",
@@ -387,6 +411,26 @@ items.push({
     ),
   ],
 });
+items.push({name:"02b · Inventario, entregas y ventas",item:[
+  req("Consultar stock", "GET", "productos/{{productoId}}"),
+  req("Filtrar pedidos", "GET", "pedidos?desde=2026-11-05&hasta=2026-11-05&estado=pendiente&clienteId={{clienteId}}"),
+  req("Resumen de ventas entregadas", "GET", "reportes/ventas?desde=2026-11-01&hasta=2026-11-30"),
+  req("Cliente no consulta ventas", "GET", "reportes/ventas",null,403,{token:"tokenCliente"}),
+  req("Rechazar stock insuficiente", "POST", "pedidos",{...bodies.pedidos,detalles:[{productoId:"{{productoId}}",cantidad:2147483647}]},409),
+  req("Rechazar contraseña actual incorrecta", "POST", "auth/change-password",{passwordActual:"Incorrecta-de-ejemplo",passwordNueva:"OtraClave2026!"},400,{token:"tokenCliente"}),
+  req("Desactivar cuenta temporal", "PUT", "usuarios/{{usuarioId}}",{nombre:bodies.usuarios.nombre,correo:"{{cuentaTemporalCorreo}}",id_rol:"{{rolId}}",activo:false}),
+  req("Reactivar cuenta temporal", "PUT", "usuarios/{{usuarioId}}",{nombre:bodies.usuarios.nombre,correo:"{{cuentaTemporalCorreo}}",id_rol:"{{rolId}}",activo:true})
+]});
+items.push({name:"02c · Nuevos módulos (consulta)",item:[
+ req("Catálogo de permisos","GET","roles/permisos"),
+ req("Movimientos de inventario","GET","inventario/movimientos?productoId={{productoId}}"),
+ req("Agenda de entregas","GET","agenda?desde=2026-11-05&hasta=2026-11-11"),
+ req("Pagos del pedido","GET","pagos?pedidoId={{pedidoId}}"),
+ req("Auditoría de productos","GET","auditoria?entidad=productos"),
+ req("Cliente no consulta auditoría","GET","auditoria",null,403,{token:"tokenCliente"}),
+ req("Cliente no ajusta inventario","POST","inventario/movimientos",{productoId:"{{productoId}}",tipo:"entrada",cantidad:1,motivo:"Ejemplo no autorizado"},403,{token:"tokenCliente"}),
+ req("Rechazar enlace de recuperación inválido","POST","auth/reset-password",{token:"no-valido",password:"EjemploSeguro2026!"},400,{publicRoute:true})
+]});
 const order = [
   "detalles-pedido",
   "pedidos",
@@ -504,4 +548,4 @@ fs.writeFileSync(
     2,
   ),
 );
-console.log("DER de siete entidades y colección del día 2 generados.");
+console.log("DER de doce tablas y colección de API generados.");

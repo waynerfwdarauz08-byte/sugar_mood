@@ -92,10 +92,38 @@ Los IDs del ejemplo son ilustrativos; usar los consultados en GET /roles. Todas 
 
 No se permite borrar un perfil de cliente mientras esté vinculado a una cuenta: responde 409. Así no queda una cuenta de Cliente sin perfil. Se elimina primero la cuenta, que conserva y desvincula el perfil; después se aplican sus restricciones comerciales normales.
 
-Rol: {"codigo":"consulta_futura","nombre":"Consulta futura","descripcion":"Explica la función del rol"}. Descripción opcional, hasta 255 caracteres, admite null. Código único, minúsculas, números y guion bajo; nombre único. administrador y cliente son códigos reservados: no pueden modificarse ni eliminarse. No se puede borrar un rol utilizado. Un rol nuevo no obtiene permisos hasta definirlos en la política de backend.
+Rol: {"codigo":"consulta_futura","nombre":"Consulta futura","descripcion":"Explica la función del rol"}. Descripción opcional, hasta 255 caracteres, admite null. Código único, minúsculas, números y guion bajo; nombre único. administrador y cliente son códigos reservados: no pueden modificarse ni eliminarse. No se puede borrar un rol utilizado. Un rol nuevo comienza sin permisos; el Administrador los asigna mediante permisos en POST/PUT de roles.
 
 ## Colección Postman
 
 Importar SUGAR_MOOD.postman_collection.json y configurar adminCorreo/adminPassword sin exportarlos. Login guarda token; registro/login de cliente guardan tokenCliente y IDs. La colección contiene los 35 endpoints de CRUD y los tres de autenticación, además de salud y casos negativos. Ejecutar las carpetas en orden; la limpieza respeta dependencias. La cuenta de cliente registrada se conserva para inspección manual.
 
 Un cliente que cambie IDs para consultar o modificar pedidos/detalles/perfiles ajenos recibe 404. No basta con ocultar botones: la misma política se ejecuta en servicios y middleware. El usuario y su rol se consultan en cada solicitud.
+
+## Inventario y seguimiento de pedidos
+
+Producto acepta stock y stockMinimo: enteros no negativos (máximo INT). Al crear predeterminan 0 y 5; al editar, omitirlos conserva los valores. Respuesta agrega stockBajo. Stock expresa unidades disponibles; los pedidos nuevos pendientes/preparados/entregados descuentan unidades y los cancelados no. Stock insuficiente responde 409. Pedido entregado no se modifica ni elimina (409), tampoco sus detalles. Cancelar/eliminar libera solo reservas efectivamente aplicadas. Cambiar cantidades o líneas ajusta la diferencia dentro de la misma transacción. stockAplicado es interno y no se acepta en el cuerpo.
+
+Pedido acepta fechaEntrega (ISO con zona, opcional/null, no anterior a fecha) y observaciones (opcional/null, máximo 500). Omitirlas en PUT conserva su valor. GET /pedidos acepta buscar, clienteId, estado, desde y hasta. Fechas AAAA-MM-DD, inclusivas en Costa Rica, aplicadas a fecha de registro. buscar consulta nombre/teléfono del cliente o id exacto. El cliente sigue limitado a sus propios pedidos y no puede filtrar otro clienteId.
+
+GET /reportes/ventas?desde=2026-11-01&hasta=2026-11-30 requiere Administrador. Devuelve periodo, periodoAnterior, resumen y anterior (total, pedidos, unidades, ticketPromedio), variacionPorcentaje (null sin ventas previas), dias y productos (hasta 10, ordenados por unidades). Solo pedidos entregados y sus precios históricos; período entre 1 y 366 días, inicialmente últimos 30 días. Importes como textos de dos decimales. El comprobante del frontend reutiliza GET /pedidos/:id, con la misma autorización.
+
+## Cambio de contraseña y desactivación
+
+POST /auth/change-password autenticado acepta únicamente passwordActual y passwordNueva. Comprueba la actual, aplica los límites existentes a la nueva, invalida todas las sesiones anteriores mediante sesionVersion y borra las cookies del navegador; responde 204. La interfaz confirma la nueva clave antes de enviarla. No implementa recuperación de claves por correo.
+
+POST/PUT /usuarios acepta activo booleano (true inicial, omitido en PUT conserva). Desactivar impide login y uso de JWT; tanto desactivar como reactivar incrementa la versión de sesión. Cambiar password desde administración también la incrementa. La respuesta de usuario incluye activo; no incluye hash ni sesionVersion. Nunca se permite desactivar, degradar o eliminar el último administrador activo.
+
+## Nuevos módulos de operación
+
+GET /roles/permisos (Administrador) devuelve el catálogo de códigos. POST/PUT /roles acepta permisos: lista única de códigos, por ejemplo ["productos.leer","categorias.leer","productos.editar"]. Omitir permisos en PUT conserva asignaciones; [] los elimina. Administrador no permite sobrescribir su acceso completo. Cliente no acepta permisos administrativos/globales. Los nuevos roles operan sobre el negocio según sus asignaciones.
+
+GET /inventario/movimientos?productoId=1&limite=100 (inventario.leer), máximo 500. POST /inventario/movimientos (inventario.crear): {"productoId":1,"tipo":"entrada","cantidad":5,"motivo":"Producción diaria"}. Tipos entrada/salida usan cantidad positiva; ajuste usa el nuevo conteo no negativo. Insuficiencia o fuera de rango: 409. Historial inmutable por API.
+
+GET /pagos?pedidoId=1 (pagos.leer): últimos 500 pagos, limitado a pedidos propios de Cliente. POST /pagos (pagos.crear): {"pedidoId":1,"monto":"500.00","metodo":"sinpe","referencia":"Opcional"}, responde 201. Métodos efectivo/sinpe/transferencia/tarjeta; monto positivo, hasta saldo pendiente. POST /pagos/:id/anular (pagos.anular): {"motivo":"Abono devuelto"}. No hay edición ni borrado de pagos. GET /pedidos agrega pagos, totalPagado, saldoPendiente y estadoPago. Pedidos con historial de pagos no se eliminan; cancelar exige anular pagos vigentes.
+
+GET /agenda?desde=2026-11-05&hasta=2026-11-11&estado=preparado (agenda.leer): usa fechaEntrega y Costa Rica. Omisión de estado excluye cancelados. Máximo 93 días. Cliente solo propios. GET /auditoria?entidad=productos&limite=100 (auditoria.leer): máximo 500, orden reciente primero; antes/despues sin secretos.
+
+POST /imagenes requiere permiso productos.crear o productos.editar, cuerpo binario Content-Type image/png o image/jpeg, máximo 2 MB; devuelve {"imagen":"/api/imagenes/hash.png"}. La API valida y recodifica el archivo. GET /imagenes/:file publica únicamente nombres hash de PNG/JPEG guardados. Producto acepta imagen con la ruta devuelta o null para quitar la referencia. Archivos locales, sin URLs externas ni SVG.
+
+POST /auth/forgot-password acepta {"correo":"cuenta@example.com"}; respuesta genérica 200 sin token si SMTP está configurado, 503 si falta configuración. POST /auth/reset-password acepta {"token":"token-del-enlace","password":"NuevaClave2026!"}; éxito 204, token inválido/usado/vencido 400. Tokens aleatorios de 40 bytes, guardados como hash, un uso, 15 minutos y vinculados a versión de sesión. Ambos endpoints aplican límite por IP; el modo navegador conserva protección CSRF. El envío real queda pendiente de configurar SMTP.

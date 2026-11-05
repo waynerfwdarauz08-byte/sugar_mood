@@ -3,24 +3,19 @@ import AppRoutes from "./routes/AppRoutes";
 import { useAuth } from "./context/AuthContext";
 import { Message } from "./components/UI";
 export default function App() {
-  const { usuario, isAdmin, logout, message, cerrando } = useAuth();
-  const links = isAdmin
-    ? [
-        ["pedidos", "01", "Pedidos"],
-        ["productos", "02", "Productos"],
-        ["categorias", "03", "Categorías"],
-        ["clientes", "04", "Clientes"],
-        ["detalles-pedido", "05", "Detalles"],
-        ["usuarios", "06", "Usuarios"],
-        ["roles", "07", "Roles"],
-      ]
-    : [
-        ["pedidos", "01", "Mis pedidos"],
-        ["productos", "02", "Productos"],
-        ["categorias", "03", "Categorías"],
-        ["perfil", "04", "Mi perfil"],
-        ["detalles-pedido", "05", "Mis detalles"],
-      ];
+  const {usuario,isAdmin,can,logout,message,cerrando}=useAuth();
+  const isClient=usuario?.rol.codigo === "cliente";
+  const links=[
+    ["pedidos","01",isClient?"Mis pedidos":"Pedidos","pedidos"],
+    ["productos","02","Productos","productos"],["categorias","03","Categorías","categorias"],
+    [isClient?"perfil":"clientes","04",isClient?"Mi perfil":"Clientes","clientes"],
+    ["detalles-pedido","05",isClient?"Mis detalles":"Detalles","detalles-pedido"],
+    ["agenda","06","Agenda","agenda"],["pagos","07",isClient?"Mis pagos":"Pagos","pagos"],
+    ["inventario","08","Inventario","inventario"],["ventas","09","Ventas","ventas"],
+    ["auditoria","10","Historial de cambios","auditoria"],
+    ...(isAdmin?[["usuarios","11","Usuarios"],["roles","12","Roles"]]:[]),
+    ["seguridad","13","Mi contraseña"],
+  ].filter(([, , ,resource])=>!resource||can(resource));
   return (
     <div className="app">
       <div className="mood-background" aria-hidden="true">

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import {
   api,
   currency,
@@ -22,7 +23,8 @@ import {
 } from "../components/UI";
 const states = ["pendiente", "preparado", "entregado", "cancelado"];
 export default function OrdersPage() {
-  const { usuario, isAdmin } = useAuth();
+  const { usuario, can } = useAuth();
+  const isAdmin=usuario?.rol.codigo !== "cliente";
   const [orders, setOrders] = useState([]),
     [clients, setClients] = useState([]),
     [products, setProducts] = useState([]),
@@ -35,7 +37,9 @@ export default function OrdersPage() {
     [busy, setBusy] = useState(false),
     [target, setTarget] = useState(null),
     [view, setView] = useState(null),
-    [filter, setFilter] = useState("todos");
+    [filter, setFilter] = useState("todos"),
+    [filters,setFilters] = useState({buscar:"",clienteId:"",desde:"",hasta:""}),
+    [applied,setApplied] = useState({});
   async function load() {
     setLoading(true);
     setError("");
@@ -43,7 +47,7 @@ export default function OrdersPage() {
     setSuccess("");
     try {
       const [o, c, p] = await Promise.allSettled([
-        pedidoService.list(),
+        pedidoService.list(applied),
         clienteService.list(),
         productoService.list(),
       ]);
@@ -86,7 +90,7 @@ export default function OrdersPage() {
   }
   useEffect(() => {
     load();
-  }, []);
+  }, [applied]);
   function open(order) {
     setSuccess("");
     setFormError("");
@@ -96,6 +100,8 @@ export default function OrdersPage() {
             id: order.id,
             clienteId: order.clienteId,
             fecha: inputDate(order.fecha),
+            fechaEntrega: order.fechaEntrega ? inputDate(order.fechaEntrega) : "",
+            observaciones: order.observaciones || "",
             estado: order.estado,
             detalles: order.detalles.map((d) => ({
               productoId: d.productoId,
@@ -107,6 +113,8 @@ export default function OrdersPage() {
         : {
             clienteId: isAdmin ? "" : usuario.cliente?.id || "",
             fecha: inputDate(),
+            fechaEntrega: "",
+            observaciones: "",
             estado: "pendiente",
             detalles: [{ productoId: "", cantidad: 1, precioUnitario: "0.00" }],
           },
@@ -127,6 +135,8 @@ export default function OrdersPage() {
         clienteId: Number(form.clienteId),
         fecha: new Date(form.fecha + "-06:00").toISOString(),
         estado: form.estado,
+        fechaEntrega: form.fechaEntrega ? new Date(form.fechaEntrega + "-06:00").toISOString() : null,
+        observaciones: form.observaciones,
         detalles: form.detalles.map((d) => ({
           productoId: Number(d.productoId),
           cantidad: Number(d.cantidad),
@@ -177,7 +187,7 @@ export default function OrdersPage() {
         eyebrow="CADA PEDIDO, UN MOMENTO DULCE"
         title={isAdmin ? "Pedidos" : "Mis pedidos"}
         description="Del primer antojo a la entrega. Todo en un solo lugar."
-        action={<button onClick={() => open()}>+ Nuevo pedido</button>}
+        action={can("pedidos","crear") && <button onClick={() => open()}>+ Nuevo pedido</button>}
       />
       <div className="stats">
         <article>
@@ -221,6 +231,13 @@ export default function OrdersPage() {
           </button>
         </div>
       )}
+      <form className="panel order-filters" onSubmit={e=>{e.preventDefault();setApplied({...filters,estado:filter === "todos" ? "" : filter});}}>
+        <Field label="Buscar cliente, teléfono o pedido"><input maxLength="100" value={filters.buscar} onChange={e=>setFilters({...filters,buscar:e.target.value})} /></Field>
+        {isAdmin && <Field label="Cliente del pedido"><select value={filters.clienteId} onChange={e=>setFilters({...filters,clienteId:e.target.value})}><option value="">Todos los clientes</option>{clients.map(c=><option key={c.id} value={c.id}>{c.nombre}</option>)}</select></Field>}
+        <Field label="Desde (fecha del pedido)"><input type="date" value={filters.desde} onChange={e=>setFilters({...filters,desde:e.target.value})} /></Field>
+        <Field label="Hasta (Costa Rica)"><input type="date" min={filters.desde} value={filters.hasta} onChange={e=>setFilters({...filters,hasta:e.target.value})} /></Field>
+        <button type="submit">Aplicar filtros</button><button type="button" className="secondary" onClick={()=>{setFilters({buscar:"",clienteId:"",desde:"",hasta:""});setFilter("todos");setApplied({});}}>Limpiar</button>
+      </form>
       <section className="panel">
         <div className="panel-toolbar">
           <div>
@@ -260,7 +277,7 @@ export default function OrdersPage() {
                   <th>Pedido / Fecha</th>
                   <th>Cliente</th>
                   <th>Estado</th>
-                  <th>Total</th>
+                  <th>Total / Saldo</th>
                   <th>Acciones</th>
                 </tr>
               </thead>
@@ -271,7 +288,7 @@ export default function OrdersPage() {
                       <button className="order-link" onClick={() => setView(o)}>
                         #{String(o.id).padStart(3, "0")}
                       </button>
-                      <small>{localDate(o.fecha)}</small>
+                      <small>{localDate(o.fecha)}</small><small>Entrega: {o.fechaEntrega ? localDate(o.fechaEntrega) : "Sin programar"}</small>
                     </td>
                     <td>
                       <strong>{o.cliente?.nombre}</strong>
@@ -283,10 +300,11 @@ export default function OrdersPage() {
                     <td>
                       <span className={"badge " + o.estado}>{o.estado}</span>
                     </td>
-                    <td className="amount">{currency(o.total)}</td>
+                    <td className="amount">{currency(o.total)}<small>Saldo: {currency(o.saldoPendiente ?? o.total)}</small></td>
                     <td>
-                      {(isAdmin || o.estado === "pendiente") && (
-                        <Actions
+                      <Link className="order-link" to={`/pedidos/${o.id}/comprobante`}>Comprobante</Link>
+                      {o.estado !== "entregado" && (isAdmin || o.estado === "pendiente") && (
+                        <Actions canEdit={can("pedidos","editar")} canDelete={can("pedidos","eliminar")}
                           onEdit={() => open(o)}
                           onDelete={() => {
                             setSuccess("");
@@ -349,6 +367,8 @@ export default function OrdersPage() {
                     }
                   />
                 </Field>
+                <Field label="Entrega programada · Costa Rica (opcional)"><input type="datetime-local" step="1" min={form.fecha} value={form.fechaEntrega} onChange={e=>setForm({...form,fechaEntrega:e.target.value})} /></Field>
+                <Field label="Observaciones (opcional)"><textarea maxLength="500" value={form.observaciones} onChange={e=>setForm({...form,observaciones:e.target.value})} /></Field>
                 <Field label="Estado">
                   <select
                     value={form.estado}
@@ -438,6 +458,7 @@ export default function OrdersPage() {
                         .map((p) => (
                           <option key={p.id} value={p.id}>
                             {p.nombre}
+                            {` · ${p.stock ?? 0} disponibles`}
                             {!p.activo ? " (inactivo)" : ""}
                           </option>
                         ))}
@@ -525,6 +546,9 @@ export default function OrdersPage() {
             {localDate(view.fecha)} ·{" "}
             <span className={"badge " + view.estado}>{view.estado}</span>
           </p>
+          <p>Entrega: {view.fechaEntrega ? localDate(view.fechaEntrega) : "Sin programar"}</p>
+          {view.observaciones && <p className="observations">{view.observaciones}</p>}
+          <Link to={"/pedidos/" + view.id + "/comprobante"}>Ver comprobante para imprimir</Link>
           <div className="table-wrap">
             <table>
               <thead>

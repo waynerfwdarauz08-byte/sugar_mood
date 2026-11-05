@@ -1,12 +1,14 @@
 const db = require("../models");
 const v = require("./validation");
 const access = require("./accessService");
+const inventory = require("./inventoryService");
 const includes = {
   categorias: [],
   clientes: [],
   productos: [{ model: db.Categoria, as: "categoria" }],
   pedidos: [
     { model: db.Cliente, as: "cliente" },
+    {model:db.Pago,as:"pagos"},
     {
       model: db.DetallePedido,
       as: "detalles",
@@ -24,6 +26,7 @@ const models = {
 };
 function serialize(record) {
   const p = record.toJSON ? record.toJSON() : record;
+  if (p.stock !== undefined) p.stockBajo = p.stock <= p.stockMinimo;
   if (p.precioUnitario !== undefined)
     p.subtotal = v.decimal(v.cents(p.precioUnitario) * BigInt(p.cantidad));
   if (p.detalles) {
@@ -32,6 +35,7 @@ function serialize(record) {
       p.detalles.reduce((s, d) => s + v.cents(d.subtotal), 0n),
     );
   }
+  if(p.detalles) Object.assign(p,require("./paymentService").summary(p));
   return p;
 }
 async function find(kind, id, transaction, lock = false) {
@@ -50,7 +54,7 @@ async function related(model, id, t) {
 function catalog(kind, b) {
   const specs = {
     categorias: ["nombre", "descripcion"],
-    productos: ["categoriaId", "nombre", "precio", "activo"],
+    productos: ["categoriaId", "nombre", "precio", "activo", "stock", "stockMinimo", "imagen"],
     clientes: ["nombre", "telefono", "direccion"],
   };
   v.object(b, specs[kind]);
@@ -72,13 +76,17 @@ function catalog(kind, b) {
     nombre: v.text(b.nombre, "nombre", 100),
     precio: v.money(b.precio),
     activo: b.activo ?? true,
+    ...(b.imagen !== undefined ? {imagen:require("./imageService").validatePath(b.imagen)} : {}),
+    ...(b.stock !== undefined ? {stock:v.nonnegative(b.stock,"stock")} : {}),
+    ...(b.stockMinimo !== undefined ? {stockMinimo:v.nonnegative(b.stockMinimo,"stockMinimo")} : {}),
   };
 }
-async function list(kind, user) {
+async function list(kind, user, query = {}) {
   access.known(user);
+  require('./permissionService').requirePermission(user,kind,'leer');
   let where = {},
     include = includes[kind];
-  if (!access.isAdmin(user)) {
+  if (user.rol.codigo === "cliente") {
     if (kind === "productos") where = { activo: true };
     if (kind === "clientes") where = { usuarioId: user.id };
     if (kind === "pedidos") where = { clienteId: access.clientId(user) };
@@ -93,6 +101,11 @@ async function list(kind, user) {
           where: { clienteId: access.clientId(user) },
         },
       ];
+  }
+  if (kind === "pedidos") {
+    const filters = require("./orderFilters").where(query);
+    if (user.rol.codigo === "cliente" && filters.clienteId && filters.clienteId !== access.clientId(user)) v.fail("No puedes consultar pedidos de otro cliente.",403);
+    where = {...filters,...where};
   }
   return (
     await models[kind].findAll({
@@ -109,16 +122,18 @@ async function get(kind, id, user) {
 }
 async function saveCatalog(kind, id, body, user) {
   access.known(user);
-  if (!access.isAdmin(user) && (kind !== "clientes" || !id))
+  if (user.rol.codigo === "cliente" && (kind !== "clientes" || !id))
     v.fail("No tienes permiso para realizar esta operación.", 403);
   const data = catalog(kind, body);
   return db.sequelize.transaction(async (t) => {
     const row = id ? await find(kind, id, t, true) : null;
     if (row) await access.check(kind, row, user, t, true);
     if (kind === "productos") await related(db.Categoria, data.categoriaId, t);
+    const previousStock=row?.stock || 0;
     const saved = row
       ? await row.update(data, { transaction: t })
       : await models[kind].create(data, { transaction: t });
+    if(kind === "productos" && saved.stock !== previousStock) await require("./stockMovementService").record(saved,previousStock,saved.stock,"ajuste","Conteo desde Productos",null,t);
     return serialize(await find(kind, saved.id, t));
   });
 }
@@ -126,15 +141,15 @@ async function saveCatalog(kind, id, body, user) {
 // altas, reemplazos y bajas concurrentes, incluyendo la regla de última línea.
 async function saveOrder(id, body, user) {
   access.known(user);
-  v.object(body, ["clienteId", "fecha", "estado", "detalles"]);
+  v.object(body, ["clienteId", "fecha", "estado", "detalles", "fechaEntrega", "observaciones"]);
   const data = {
-    clienteId: access.isAdmin(user)
+    clienteId: user.rol.codigo !== "cliente"
       ? v.integer(body.clienteId, "clienteId")
       : access.clientId(user),
     fecha: v.date(body.fecha),
     estado: v.state(body.estado === undefined ? "pendiente" : body.estado),
   };
-  if (!access.isAdmin(user)) {
+  if (user.rol.codigo === "cliente") {
     if (
       body.clienteId !== undefined &&
       v.integer(body.clienteId, "clienteId") !== data.clienteId
@@ -159,6 +174,10 @@ async function saveOrder(id, body, user) {
   const orderId = await db.sequelize.transaction(async (t) => {
     let row = id ? await find("pedidos", id, t, true) : null;
     if (row) await access.check("pedidos", row, user, t, true);
+    if (row) inventory.editable(row);
+    data.fechaEntrega = body.fechaEntrega === undefined ? row?.fechaEntrega || null : body.fechaEntrega === null || body.fechaEntrega === "" ? null : v.date(body.fechaEntrega);
+    data.observaciones = body.observaciones === undefined ? row?.observaciones || null : v.text(body.observaciones,"observaciones",500,true);
+    if (data.fechaEntrega && data.fechaEntrega < data.fecha) v.fail("La entrega no puede ser anterior al pedido.");
     await related(db.Cliente, data.clienteId, t);
     const old = row
       ? await db.DetallePedido.findAll({
@@ -166,19 +185,13 @@ async function saveOrder(id, body, user) {
           transaction: t,
         })
       : [];
-    const prices = new Map();
-    for (const line of [...lines].sort((a, b) => a.productoId - b.productoId)) {
-      const product = await related(db.Producto, line.productoId, t);
-      const previous = old.find((d) => d.productoId === line.productoId);
-      if (!previous && !product.activo)
-        v.fail("No se pueden agregar productos inactivos.");
-      prices.set(
-        line.productoId,
-        previous ? previous.precioUnitario : product.precio,
-      );
-    }
-    if (row) await row.update(data, { transaction: t });
-    else row = await db.Pedido.create(data, { transaction: t });
+    if(!row) row=await db.Pedido.create(data,{transaction:t});
+    const products = await inventory.reconcile(row, old, lines, data.estado, t);
+    data.stockAplicado = data.estado !== "cancelado";
+    const prices = new Map(lines.map(line => [line.productoId,
+      old.find(d => d.productoId === line.productoId)?.precioUnitario || products.get(line.productoId).precio]));
+    await require("./paymentService").validateOrder(row,lines,prices,data.estado,t);
+    await row.update(data,{transaction:t});
     for (const d of old)
       if (!lines.some((l) => l.productoId === d.productoId))
         await d.destroy({ transaction: t });
@@ -211,13 +224,23 @@ async function saveDetail(id, body, user) {
   const saved = await db.sequelize.transaction(async (t) => {
     const parent = await find("pedidos", pedidoId, t, true);
     await access.check("pedidos", parent, user, t, true);
+    inventory.editable(parent);
+    if (parent.estado === "cancelado") v.fail("Reactiva el pedido antes de modificar sus detalles.",409);
+    const before = await db.DetallePedido.findAll({where:{pedidoId},transaction:t});
+    const productoId = original ? original.productoId : v.integer(body.productoId,"productoId");
+    if (!id && before.some(d => d.productoId === productoId)) v.fail("Producto repetido en el pedido.",409);
+    const after = id ? before.map(d => ({productoId:d.productoId,cantidad:d.id === Number(id) ? cantidad : d.cantidad})) : [...before,{productoId,cantidad}];
+    const products = await inventory.reconcile(parent,before,after,parent.estado,t);
+    const prices=new Map(before.map(d=>[d.productoId,d.precioUnitario]));
+    if(!prices.has(productoId))prices.set(productoId,products.get(productoId).precio);
+    await require("./paymentService").validateOrder(parent,after,prices,parent.estado,t);
+    await parent.update({stockAplicado:true},{transaction:t});
     if (id) {
       const row = await find("detalles-pedido", id, t, true);
       await row.update({ cantidad }, { transaction: t });
       return row.id;
     }
-    const productoId = v.integer(body.productoId, "productoId");
-    const product = await related(db.Producto, productoId, t);
+    const product = products.get(productoId);
     if (!product.activo) v.fail("No se pueden agregar productos inactivos.");
     if (
       await db.DetallePedido.findOne({
@@ -237,14 +260,15 @@ async function saveDetail(id, body, user) {
 }
 async function remove(kind, id, user) {
   access.known(user);
+  require('./permissionService').requirePermission(user,kind,'eliminar');
   if (
-    !access.isAdmin(user) &&
+    user.rol.codigo === "cliente" &&
     ["categorias", "productos", "clientes"].includes(kind)
   )
     v.fail("No tienes permiso para eliminar este registro.", 403);
   const original = kind === "detalles-pedido" ? await find(kind, id) : null;
   await db.sequelize.transaction(async (t) => {
-    if (original) await find("pedidos", original.pedidoId, t, true);
+    const parent = original ? await find("pedidos", original.pedidoId, t, true) : null;
     const row = await find(kind, id, t, true);
     await access.check(kind, row, user, t, true);
     if (kind === "clientes" && row.usuarioId)
@@ -260,8 +284,20 @@ async function remove(kind, id, user) {
       })) <= 1
     )
       v.fail("No se puede eliminar el último detalle del pedido.", 409);
+    if (kind === "pedidos" || original) {
+      const order = parent || row;
+      inventory.editable(order);
+      if(!original && await db.Pago.count({where:{pedidoId:order.id},transaction:t})) v.fail("Este pedido tiene historial de pagos y no puede eliminarse.",409);
+      if (original && order.estado === "cancelado") v.fail("Reactiva el pedido antes de modificar sus detalles.",409);
+      const before = await db.DetallePedido.findAll({where:{pedidoId:order.id},transaction:t});
+      const after = original ? before.filter(d => d.id !== row.id) : [];
+      if(original) await require("./paymentService").validateOrder(order,after,new Map(before.map(d=>[d.productoId,d.precioUnitario])),order.estado,t);
+      await inventory.reconcile(order,before,after,original ? order.estado : "cancelado",t);
+      if (original) await order.update({stockAplicado:true},{transaction:t});
+    }
     if (kind === "pedidos")
       await db.DetallePedido.destroy({
+        individualHooks:true,
         where: { pedidoId: row.id },
         transaction: t,
       });
@@ -272,10 +308,13 @@ module.exports = {
   list,
   get,
   remove,
-  save: (kind, id, body, user) =>
+  save: (kind, id, body, user) => {
+    require('./permissionService').requirePermission(user,kind,id?'editar':'crear');
+    return (
     kind === "pedidos"
       ? saveOrder(id, body, user)
       : kind === "detalles-pedido"
         ? saveDetail(id, body, user)
-        : saveCatalog(kind, id, body, user),
+        : saveCatalog(kind, id, body, user));
+  },
 };

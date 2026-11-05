@@ -13,7 +13,7 @@ module.exports = (kind) => {
       "Service",
   );
   return {
-    list: async (req, res) => res.json(await service.list(req.usuario)),
+    list: async (req, res) => res.json(await service.list(req.usuario, req.query)),
     get: async (req, res) =>
       res.json(await service.get(req.params.id, req.usuario)),
     create: async (req, res) =>

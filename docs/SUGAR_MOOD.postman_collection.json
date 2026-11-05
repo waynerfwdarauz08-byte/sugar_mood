@@ -749,7 +749,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"categoriaId\": \"{{categoriaId}}\",\n  \"nombre\": \"Paleta {{$timestamp}} (ejemplo)\",\n  \"precio\": \"700.00\",\n  \"activo\": true\n}",
+              "raw": "{\n  \"categoriaId\": \"{{categoriaId}}\",\n  \"nombre\": \"Paleta {{$timestamp}} (ejemplo)\",\n  \"precio\": \"700.00\",\n  \"activo\": true,\n  \"stock\": 100,\n  \"stockMinimo\": 5\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -793,7 +793,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"categoriaId\": \"{{categoriaId}}\",\n  \"nombre\": \"Otro producto {{$timestamp}} (ejemplo)\",\n  \"precio\": \"700.00\",\n  \"activo\": true\n}",
+              "raw": "{\n  \"categoriaId\": \"{{categoriaId}}\",\n  \"nombre\": \"Otro producto {{$timestamp}} (ejemplo)\",\n  \"precio\": \"700.00\",\n  \"activo\": true,\n  \"stock\": 100,\n  \"stockMinimo\": 5\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -895,7 +895,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"categoriaId\": \"{{categoriaId}}\",\n  \"nombre\": \"Paleta {{$timestamp}} (ejemplo)\",\n  \"precio\": \"700.00\",\n  \"activo\": true\n}",
+              "raw": "{\n  \"categoriaId\": \"{{categoriaId}}\",\n  \"nombre\": \"Paleta {{$timestamp}} (ejemplo)\",\n  \"precio\": \"700.00\",\n  \"activo\": true,\n  \"stock\": 100,\n  \"stockMinimo\": 5\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -943,7 +943,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"clienteId\": \"{{clienteId}}\",\n  \"fecha\": \"2026-11-05T10:00:00-06:00\",\n  \"estado\": \"pendiente\",\n  \"detalles\": [\n    {\n      \"productoId\": \"{{productoId}}\",\n      \"cantidad\": 2\n    }\n  ]\n}",
+              "raw": "{\n  \"clienteId\": \"{{clienteId}}\",\n  \"fecha\": \"2026-11-05T10:00:00-06:00\",\n  \"estado\": \"pendiente\",\n  \"fechaEntrega\": \"2026-11-05T18:00:00-06:00\",\n  \"observaciones\": \"Llamar al llegar\",\n  \"detalles\": [\n    {\n      \"productoId\": \"{{productoId}}\",\n      \"cantidad\": 2\n    }\n  ]\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1045,7 +1045,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"clienteId\": \"{{clienteId}}\",\n  \"fecha\": \"2026-11-05T10:00:00-06:00\",\n  \"estado\": \"pendiente\",\n  \"detalles\": [\n    {\n      \"productoId\": \"{{productoId}}\",\n      \"cantidad\": 2\n    }\n  ]\n}",
+              "raw": "{\n  \"clienteId\": \"{{clienteId}}\",\n  \"fecha\": \"2026-11-05T10:00:00-06:00\",\n  \"estado\": \"pendiente\",\n  \"fechaEntrega\": \"2026-11-05T18:00:00-06:00\",\n  \"observaciones\": \"Llamar al llegar\",\n  \"detalles\": [\n    {\n      \"productoId\": \"{{productoId}}\",\n      \"cantidad\": 2\n    }\n  ]\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1409,7 +1409,8 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('HTTP 201',()=>pm.response.to.have.status(201));",
-                  "if(pm.response.code===201)pm.collectionVariables.set('usuarioId',pm.response.json().id);"
+                  "if(pm.response.code===201)pm.collectionVariables.set('usuarioId',pm.response.json().id);",
+                  "if(pm.response.code===201)pm.collectionVariables.set('cuentaTemporalCorreo',pm.response.json().correo);"
                 ]
               }
             }
@@ -1667,7 +1668,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"categoriaId\": \"{{categoriaId}}\",\n  \"nombre\": \"Paleta {{$timestamp}} (ejemplo)\",\n  \"precio\": \"700.00\",\n  \"activo\": true\n}",
+              "raw": "{\n  \"categoriaId\": \"{{categoriaId}}\",\n  \"nombre\": \"Paleta {{$timestamp}} (ejemplo)\",\n  \"precio\": \"700.00\",\n  \"activo\": true,\n  \"stock\": 100,\n  \"stockMinimo\": 5\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1813,6 +1814,557 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('HTTP 204',()=>pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "02b · Inventario, entregas y ventas",
+      "item": [
+        {
+          "name": "Consultar stock",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/productos/{{productoId}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": []
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200',()=>pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Filtrar pedidos",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/pedidos?desde=2026-11-05&hasta=2026-11-05&estado=pendiente&clienteId={{clienteId}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": []
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200',()=>pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Resumen de ventas entregadas",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/reportes/ventas?desde=2026-11-01&hasta=2026-11-30",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": []
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200',()=>pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Cliente no consulta ventas",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/reportes/ventas",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenCliente}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": []
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 403',()=>pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Rechazar stock insuficiente",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/pedidos",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"clienteId\": \"{{clienteId}}\",\n  \"fecha\": \"2026-11-05T10:00:00-06:00\",\n  \"estado\": \"pendiente\",\n  \"fechaEntrega\": \"2026-11-05T18:00:00-06:00\",\n  \"observaciones\": \"Llamar al llegar\",\n  \"detalles\": [\n    {\n      \"productoId\": \"{{productoId}}\",\n      \"cantidad\": 2147483647\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 409',()=>pm.response.to.have.status(409));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Rechazar contraseña actual incorrecta",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/change-password",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenCliente}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"passwordActual\": \"Incorrecta-de-ejemplo\",\n  \"passwordNueva\": \"OtraClave2026!\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 400',()=>pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Desactivar cuenta temporal",
+          "request": {
+            "method": "PUT",
+            "url": "{{baseUrl}}/usuarios/{{usuarioId}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"Cuenta de ejemplo\",\n  \"correo\": \"{{cuentaTemporalCorreo}}\",\n  \"id_rol\": \"{{rolId}}\",\n  \"activo\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200',()=>pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Reactivar cuenta temporal",
+          "request": {
+            "method": "PUT",
+            "url": "{{baseUrl}}/usuarios/{{usuarioId}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"Cuenta de ejemplo\",\n  \"correo\": \"{{cuentaTemporalCorreo}}\",\n  \"id_rol\": \"{{rolId}}\",\n  \"activo\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200',()=>pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "02c · Nuevos módulos (consulta)",
+      "item": [
+        {
+          "name": "Catálogo de permisos",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/roles/permisos",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": []
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200',()=>pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Movimientos de inventario",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/inventario/movimientos?productoId={{productoId}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": []
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200',()=>pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Agenda de entregas",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/agenda?desde=2026-11-05&hasta=2026-11-11",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": []
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200',()=>pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Pagos del pedido",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/pagos?pedidoId={{pedidoId}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": []
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200',()=>pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Auditoría de productos",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/auditoria?entidad=productos",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": []
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200',()=>pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Cliente no consulta auditoría",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/auditoria",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenCliente}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": []
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 403',()=>pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Cliente no ajusta inventario",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/inventario/movimientos",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenCliente}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"productoId\": \"{{productoId}}\",\n  \"tipo\": \"entrada\",\n  \"cantidad\": 1,\n  \"motivo\": \"Ejemplo no autorizado\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 403',()=>pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Rechazar enlace de recuperación inválido",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/reset-password",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"no-valido\",\n  \"password\": \"EjemploSeguro2026!\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 400',()=>pm.response.to.have.status(400));"
                 ]
               }
             }

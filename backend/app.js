@@ -19,6 +19,7 @@ app.use(
   ),
 );
 app.use(cookieParser());
+app.use((req,res,next)=>require("./services/auditService").context.run({usuario:null},next));
 app.use(require("./middlewares/csrfMiddleware"));
 app.use(express.json({ limit: "100kb" }));
 app.use("/api/auth", require("./routes/authRoutes"));
@@ -36,7 +37,7 @@ for (const kind of [
   app.use(
     "/api/" + kind,
     authenticated,
-    allowed("administrador", "cliente"),
+
     require(
       "./routes/" +
         {
@@ -56,6 +57,12 @@ for (const kind of ["usuarios", "roles"])
     allowed("administrador"),
     require("./routes/" + (kind === "usuarios" ? "usuario" : "rol") + "Routes"),
   );
+app.use("/api/reportes", authenticated, require("./middlewares/permissionMiddleware")("ventas"), require("./routes/reporteRoutes"));
+app.use("/api/inventario",authenticated,require("./routes/inventarioRoutes"));
+app.use("/api/pagos",authenticated,require("./routes/pagoRoutes"));
+app.use("/api/agenda",authenticated,require("./middlewares/permissionMiddleware")("agenda"),require("./routes/agendaRoutes"));
+app.use("/api/auditoria",authenticated,require("./middlewares/permissionMiddleware")("auditoria"),require("./routes/auditoriaRoutes"));
+app.use("/api/imagenes",require("./routes/imagenRoutes"));
 app.use((req, res) => res.status(404).json({ error: "Ruta no encontrada." }));
 app.use((err, req, res, next) => {
   let status = err.status || 500,

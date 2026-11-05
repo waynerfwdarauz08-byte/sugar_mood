@@ -8,6 +8,7 @@ import {
 } from "react";
 import { session } from "../services/api";
 import { authService } from "../services/authService";
+import {canAccess} from '../services/permissionService';
 export const AuthContext = createContext(null);
 export function AuthProvider({ children }) {
   const [usuario, setUsuario] = useState(null),
@@ -104,6 +105,7 @@ export function AuthProvider({ children }) {
       value={{
         usuario,
         isAdmin: usuario?.rol?.codigo === "administrador",
+        can: (resource,action='leer')=>canAccess(usuario,resource,action),
         login,
         logout,
         message,
@@ -111,6 +113,7 @@ export function AuthProvider({ children }) {
         cargando,
         cerrando,
         restaurar,
+        clearSession,
       }}
     >
       {children}

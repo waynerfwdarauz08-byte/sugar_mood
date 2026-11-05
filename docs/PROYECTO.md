@@ -37,3 +37,7 @@ Los pesos del día 2 son CRUDs 30 %, autenticación 25 %, frontend 20 %, relacio
 ## Criterios del documento de clase
 
 Modelado: cinco entidades coherentes y cuatro relaciones (35 %). Enfoque empresarial: gestión de encargos (15 %). Estructura: backend/frontend y responsabilidades separadas (20 %). CRUD: sistema completo con pruebas HTTP/MySQL (30 %). Son los pesos de la rúbrica, no una calificación asignada.
+
+## Extensión de inventario y operación
+
+La primera ampliación conservó las siete entidades originales. Producto incorpora stock disponible y stockMinimo; Pedido incorpora fechaEntrega, observaciones y stockAplicado interno para distinguir las reservas posteriores a la migración; Usuario incorpora activo y sesionVersion para invalidar accesos. Ventas y comprobantes se calculan desde pedidos y detalles; no crean tablas duplicadas. Los importes siguen usando el precio histórico de cada detalle. Las reservas se ajustan con bloqueo de productos por ID ascendente y se revierten si falla cualquier escritura. Los pedidos entregados son inmutables.

@@ -75,7 +75,10 @@ async function request(path, options = {}, retryCsrf = true) {
 }
 export const api = {
   request,
-  list: (kind) => request("/" + kind),
+  list: (kind, filters = {}) => {
+    const query = new URLSearchParams(Object.entries(filters).filter(([,v]) => v !== "" && v != null)).toString();
+    return request("/" + kind + (query ? "?" + query : ""));
+  },
   get: (kind, id) => request(`/${kind}/${id}`),
   save: (kind, id, body) =>
     request("/" + kind + (id ? "/" + id : ""), {

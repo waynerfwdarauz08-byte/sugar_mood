@@ -11,6 +11,11 @@ for (const [name, file] of Object.entries({
   DetallePedido: "detallePedido",
   Rol: "rol",
   Usuario: "usuario",
+  RolPermiso:'rolPermiso',
+  MovimientoInventario:'movimientoInventario',
+  Pago:'pago',
+  Auditoria:'auditoria',
+  RecuperacionPassword:'recuperacionPassword',
 }))
   db[name] = require("./" + file)(sequelize, DataTypes);
 function relation(parent, child, key, many, one) {
@@ -44,4 +49,7 @@ db.Cliente.belongsTo(db.Usuario, {
   onDelete: "RESTRICT",
   onUpdate: "CASCADE",
 });
+relation("Pedido","Pago","pedidoId","pagos","pedido");
+db.Rol.hasMany(db.RolPermiso,{foreignKey:"id_rol",as:"asignaciones",onDelete:"CASCADE"});
+require("../services/auditService").install(db);
 module.exports = db;

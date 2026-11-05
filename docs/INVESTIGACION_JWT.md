@@ -20,7 +20,7 @@ Como las cookies se envían automáticamente, se añadió protección CSRF. /aut
 
 Un access token vencido produce 401. Frontend borra la sesión, informa al usuario y vuelve al login; también programa el vencimiento local y no depende solo de ocultar páginas. Un 403 indica falta de permiso y no cierra una sesión válida.
 
-Un refresh token permite obtener otro access token sin pedir credenciales; requiere almacenamiento, expiración, rotación y revocación seguros. El PDF exige investigarlo, no implementarlo. Esta entrega requiere volver a iniciar sesión al vencer. Recargar conserva la cookie pero no prolonga exp. Logout llama al servidor para borrar la cookie de sesión y la prueba CSRF; una copia externa del JWT sigue siendo válida hasta exp, salvo que la cuenta se borre. No se afirma tener una lista de revocación. Si la petición de logout falla por conexión, se informa y no se afirma que se eliminó la cookie.
+Un refresh token permite obtener otro access token sin pedir credenciales; requiere almacenamiento, expiración, rotación y revocación seguros. El PDF exige investigarlo, no implementarlo. Esta entrega requiere volver a iniciar sesión al vencer. Recargar conserva la cookie pero no prolonga exp. Logout llama al servidor para borrar la cookie de sesión y la prueba CSRF; una copia externa del JWT sigue siendo válida hasta exp, salvo que la cuenta se borre, se desactive o cambie su contraseña. El claim ver se compara con usuarios.sesionVersion en cada petición. No se afirma tener una lista de revocación. Si la petición de logout falla por conexión, se informa y no se afirma que se eliminó la cookie.
 
 ## Contraseñas y roles
 

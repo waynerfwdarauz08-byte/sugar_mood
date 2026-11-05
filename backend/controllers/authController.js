@@ -15,6 +15,11 @@ exports.login = async (req, res) => {
 exports.me = async (req, res) =>
   res.json({ ...req.usuario, expiresAt: req.sessionExpiresAt });
 exports.csrf = (req, res) => res.json({ csrfToken: cookies.csrf(req, res) });
+exports.changePassword = async (req,res) => {
+  await auth.changePassword(req.usuario.id,req.body);
+  cookies.clear(res);
+  res.status(204).end();
+};
 exports.logout = (req, res) => {
   cookies.clear(res);
   res.status(204).end();

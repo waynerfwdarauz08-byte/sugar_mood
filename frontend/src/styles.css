@@ -713,3 +713,38 @@ fieldset {
     font-size: 20px;
   }
 }
+/* Gestión de existencias, entregas, ventas y comprobantes. */
+.order-filters { display:flex; flex-wrap:wrap; align-items:end; gap:16px; padding:24px; margin-bottom:24px; }
+.order-filters label { flex:1 1 180px; margin:0; }
+.security-panel { padding:28px; max-width:620px; }
+.sales-comparison { padding:24px; margin-bottom:24px; }
+.sales-days { padding:0 24px 24px; max-height:500px; overflow:auto; }
+.sales-day { display:flex; gap:16px; align-items:center; padding:10px 0; }
+.sales-day > span { min-width:100px; }
+.sales-day > strong { min-width:130px; text-align:right; }
+.sales-track { flex:1; min-width:20px; height:10px; border-radius:8px; background:#edf3ef; overflow:hidden; }
+.sales-track > div { height:100%; background:#157077; border-radius:8px; }
+.receipt-actions { display:flex; justify-content:space-between; gap:16px; margin-bottom:24px; align-items:center; }
+.receipt { padding:32px; }
+.receipt-header { display:flex; gap:24px; align-items:center; border-bottom:1px solid #dae4df; padding-bottom:24px; margin-bottom:24px; }
+.receipt-header img { width:150px; height:150px; object-fit:contain; }
+.receipt h1 { font-size:28px; }.receipt h2 { margin-top:20px; }
+.observations { white-space:pre-wrap; overflow-wrap:anywhere; }
+@media (max-width:600px) { .receipt { padding:18px; }.receipt-header { flex-direction:column; align-items:flex-start; }.sales-day { gap:8px; }.sales-day > strong { min-width:90px; } }
+@media print {
+  @page { margin:15mm; }
+  .app > aside, .mood-background, .topbar, footer, .receipt-actions { display:none !important; }
+  html, body, #root, .app, .workspace, main { display:block !important; width:auto !important; min-height:0 !important; margin:0 !important; padding:0 !important; background:white !important; color:black !important; }
+  .receipt { border:0 !important; box-shadow:none !important; padding:0 !important; }
+  .receipt .table-wrap { overflow:visible; }.receipt table { min-width:0; width:100%; }
+  .receipt tr { break-inside:avoid; }.receipt thead { display:table-header-group; }
+  .receipt .order-total { break-inside:avoid; }.receipt .badge { color:black; }
+}
+.product-thumb { width:64px;height:64px;object-fit:cover;border-radius:12px;display:block;margin-bottom:8px; }
+.product-preview { width:160px;height:160px;object-fit:contain;display:block;margin-bottom:12px; }
+.permission-grid { display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px;border:1px solid #dae4df;padding:16px;margin:16px 0; }
+.permission-grid .check { font-size:13px;margin:0; }
+.operation-section { margin-top:24px; }.agenda-grid { display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:20px; }
+.agenda-card { padding:24px; }.agenda-card h2 { margin:16px 0; }
+.audit-values { display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px; }
+.audit-values pre { white-space:pre-wrap;overflow-wrap:anywhere;background:#f3f7f4;padding:16px;border-radius:10px;font-size:12px; }

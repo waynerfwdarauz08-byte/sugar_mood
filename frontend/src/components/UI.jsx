@@ -89,12 +89,12 @@ export function Field({ label, children }) {
     </label>
   );
 }
-export function Actions({ onEdit, onDelete, canDelete = true }) {
+export function Actions({ onEdit, onDelete, canDelete = true, canEdit = true }) {
   return (
     <div className="row-actions">
-      <button className="text-button" onClick={onEdit}>
+      {canEdit && <button className="text-button" onClick={onEdit}>
         Editar
-      </button>
+      </button>}
       {canDelete && (
         <button className="text-button delete" onClick={onDelete}>
           Eliminar
